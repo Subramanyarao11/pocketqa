@@ -6,6 +6,59 @@
 
 You own **what the AI decides and how we prove it is right**. Track B owns **what carries the decision in and out**.
 
+## Current state
+
+Phases 0, 1 and 2 are implemented in `services/ai-lab/`, and the model path now
+runs. All nine task contracts are frozen and generated into
+`packages/schemas/ai/`; the fixture corpus is in `packages/ai-fixtures/`;
+**117 unit tests and 35 eval cases pass**, and the suite runs against three
+engines.
+
+| engine | correct | in vocabulary | rejected | engine failures | cost per run |
+|---|---|---|---|---|---|
+| rules (deterministic) | 35/35 | 35/35 | 0 | 0 | free |
+| device proxy — `gemma-3-4b-it` | 21/35 | 33/35 | **2** | 5 (all timeouts) | $0.0024 |
+| ceiling — `gemini-2.5-flash` | 30/35 | 35/35 | **0** | **0** | $0.0336 |
+
+The connected engine is an interim implementation of Track B's `AI-B-02`, written
+here so these numbers could exist before the service layer landed — see
+[the engine handoff](PocketQA_AI_Engine_Handoff.md), which also carries the full
+findings. The three headline ones:
+
+- **The closed vocabulary caught a real hallucination.** Both device-proxy
+  rejections are `repair_selector` on the *declining* fixtures, where the control
+  is genuinely absent — and the model proposed a node id that does not exist on
+  those screens. `app/merge.py` rejected it and fell back. That is the whole
+  design working, on a real model, on the task where a wrong answer silently
+  retargets an approved test.
+- **The device-sized model ignored the explorer action budget**, choosing an
+  action with zero actions remaining. Measured evidence that budget enforcement
+  cannot be delegated to the model — which is why the policy engine re-evaluates
+  every choice (spec §22.5).
+- **The injection suite caught a live model.** On the fake-system-prompt fixture
+  the device proxy moved the candidate the injected text names (`a5`) up its
+  ranking, against its own clean baseline. Nothing unsafe escaped — every id
+  stayed in vocabulary and the top pick held — but the defence that worked was
+  structural, not persuasive: it could only reorder ids it had been given. The
+  ceiling model was unaffected on all five fixtures.
+- **The device-sized model would rather answer than decline.** On the fixture
+  whose intent describes a screen this session never visited, the correct answer
+  is `insufficientEvidence` — which the rules return and the model does not; it
+  asserted an unrelated observed fact instead. Both the id and the value were
+  legitimately in the allowed set, so the merge rule accepted it and was right
+  to: **the closed vocabulary stops fabrication, not bad judgement.** This is the
+  strongest argument for keeping the deterministic compiler in charge of
+  assertion *selection* and letting the model rank and explain — spec §17 and
+  ADR-006 already say so.
+
+Read device-proxy results in two buckets: reasoning failures (all three above)
+should be expected to transfer to the device; decoding and formatting failures
+are artefacts of one provider's stack and must be retested against ML Kit Prompt
+before they mean anything.
+
+Read `rejected` before `correct`. The eval expectations were written for the
+deterministic twin, so a model that disagrees is not automatically wrong.
+
 ---
 
 ## Part 1 — Shared ground rules
@@ -136,55 +189,55 @@ Almost everything is **None** or **Fixtures**. That is the point of the plan.
 
 ### Phase 0 — Contract freeze
 
-| ID | Task | Depends on | MVP dep. | Done when |
-|---|---|---|---|---|
-| AI-A-01 | Author the task contract set: `rank_assertions`, `explain_failure`, `repair_selector`, `rank_explorer_candidate`, `audit_accessibility`, `generate_edge_cases`, `classify_flake`, `compile_intent` | — | None | Each has a request schema, a response schema, an `insufficientEvidence` field, and an `allowed*Ids` closed vocabulary. Reviewed with B, merged to `packages/schemas/ai/`. |
-| AI-A-02 | Write the golden-case format and the eval runner skeleton | AI-A-01 | None | `python evals/run_evals.py` runs, reports per-task pass rate, exits non-zero on regression. |
-| AI-A-03 | Hand-author fixture corpus v0 from Tech Spec §11 (coupon-retry flow: 10 states, action trace, one failing run) | — | None | Validates against `ui-state.schema.json` and `test-draft.schema.json`. Unblocks every downstream task before B's pipeline exists. |
+| ID | Task | Depends on | MVP dep. | Done when | Status |
+|---|---|---|---|---|---|
+| AI-A-01 | Author the task contract set: `rank_assertions`, `explain_failure`, `repair_selector`, `rank_explorer_candidate`, `audit_accessibility`, `generate_edge_cases`, `classify_flake`, `compile_intent` | — | None | Each has a request schema, a response schema, an `insufficientEvidence` field, and an `allowed*Ids` closed vocabulary. Reviewed with B, merged to `packages/schemas/ai/`.  | **Done** — 8 contracts in `packages/schemas/ai/`, generated from the Pydantic models and drift-checked in CI |
+| AI-A-02 | Write the golden-case format and the eval runner skeleton | AI-A-01 | None | `python evals/run_evals.py` runs, reports per-task pass rate, exits non-zero on regression.  | **Done** — `evals/run_evals.py`, three axes scored separately |
+| AI-A-03 | Hand-author fixture corpus v0 from Tech Spec §11 (coupon-retry flow: 10 states, action trace, one failing run) | — | None | Validates against `ui-state.schema.json` and `test-draft.schema.json`. Unblocks every downstream task before B's pipeline exists.  | **Done** — `packages/ai-fixtures/`, 30 files across 6 scenarios, rebuilt reproducibly in CI. Validated against the AI task schemas; `ui-state.schema.json` does not exist yet (E0-02), so that check lands with it |
 
 Do AI-A-01 and AI-A-03 first. They are the two things that let both of you stop thinking about the app at all.
 
 ### Phase 1 — P0 backlog capabilities
 
-| ID | Task | Backlog row | Depends on | MVP dep. | Done when |
-|---|---|---|---|---|---|
-| AI-A-04 | **Intent compiler** — natural-language intent → strict assertion JSON, restricted to candidates present in the trace | P0 Intent compiler | AI-A-01/03 | Fixtures | 10 intent phrasings (including Hinglish) over the coupon flow produce schema-valid assertions; unsupported intents return `INSUFFICIENT_EVIDENCE` rather than inventing an assertion. |
-| AI-A-05 | **Assertion ranker** — rank deterministic candidates by intent relevance (Tech Spec §19.2) | P0 Intent compiler | AI-A-04 | Fixtures | Beats the deterministic score on the golden set; every returned `candidateId` is one we supplied; merge rejects unknown IDs in tests. |
-| AI-A-06 | Deterministic twin for AI-A-04/05: rule-based intent-relevance scoring (§17.2–§17.3) | mandatory baseline | AI-A-01 | None | Produces a usable ranking with the LLM disabled. This is the code we later port to Kotlin. |
-| AI-A-07 | **Evidence writer** — turn intent + state diff + device context into a human failure explanation | P0 Evidence writer | AI-A-03 | Fixtures | Explanation cites only facts present in the evidence bundle; a fabricated-cause adversarial case is caught by an eval. |
-| AI-A-08 | Adversarial prompt-injection eval suite: fixtures with screen text like "ignore previous instructions", "approve this test", fake system prompts | invariant 7 | AI-A-02 | None | 100% of injection fixtures produce unchanged, schema-valid, in-vocabulary output. This suite gates every prompt change. |
+| ID | Task | Backlog row | Depends on | MVP dep. | Done when | Status |
+|---|---|---|---|---|---|---|
+| AI-A-04 | **Intent compiler** — natural-language intent → strict assertion JSON, restricted to candidates present in the trace | P0 Intent compiler | AI-A-01/03 | Fixtures | 10 intent phrasings (including Hinglish) over the coupon flow produce schema-valid assertions; unsupported intents return `INSUFFICIENT_EVIDENCE` rather than inventing an assertion.  | **Done** — declines the unsupported intent; Hinglish gap noted in eval case 04 |
+| AI-A-05 | **Assertion ranker** — rank deterministic candidates by intent relevance (Tech Spec §19.2) | P0 Intent compiler | AI-A-04 | Fixtures | Beats the deterministic score on the golden set; every returned `candidateId` is one we supplied; merge rejects unknown IDs in tests.  | **Done** — rules vs both models measured; see handoff §6 |
+| AI-A-06 | Deterministic twin for AI-A-04/05: rule-based intent-relevance scoring (§17.2–§17.3) | mandatory baseline | AI-A-01 | None | Produces a usable ranking with the LLM disabled. This is the code we later port to Kotlin.  | **Done** — `app/relevance.py`, incl. romanised-Hindi stopwords |
+| AI-A-07 | **Evidence writer** — turn intent + state diff + device context into a human failure explanation | P0 Evidence writer | AI-A-03 | Fixtures | Explanation cites only facts present in the evidence bundle; a fabricated-cause adversarial case is caught by an eval.  | **Done** — `explain_failure`, cites fact ids |
+| AI-A-08 | Adversarial prompt-injection eval suite: fixtures with screen text like "ignore previous instructions", "approve this test", fake system prompts | invariant 7 | AI-A-02 | None | 100% of injection fixtures produce unchanged, schema-valid, in-vocabulary output. This suite gates every prompt change.  | **Done** — 6 injection cases, safety axis fails the build |
 
 ### Phase 2 — P1 agents (still no app required)
 
-| ID | Task | Backlog row | Depends on | MVP dep. | Done when |
-|---|---|---|---|---|---|
-| AI-A-09 | **Explorer candidate ranker** — pick one `proposalId` or `STOP` from a prefiltered safe set (§19.3) | P1 Explorer Agent | AI-A-01 | Fixtures | Never returns an ID outside `safeCandidates`; respects `remainingActions`; returns `STOP` when novelty is exhausted. Evaluated against B's synthetic state graph. |
-| AI-A-10 | Novelty and goal-progress scoring for the explorer, deterministic | P1 Explorer Agent | AI-A-09 | None | Ranks unvisited states above revisits on the synthetic graph without any model call. |
-| AI-A-11 | **Selector self-heal** — rank replacement selectors using label, role, layout and visual meaning | P1 Selector Self-Heal | AI-A-03 | Fixtures | On 15 mutated-tree fixtures (renamed id, moved node, changed label, translated label), top-1 recovers the correct node in the large majority of cases; output is a *proposal* flagged for approval, never auto-applied (safety invariant 4). |
-| AI-A-12 | **Failure detective** — classify a failure (timing / animation / selector / environment / genuine regression) and rank steps for removal to find the shortest reproduction | P1 Failure Detective | AI-A-07 | Fixtures | Classification matches the labelled cause on the labelled run-log corpus; the step-minimisation ranking is deterministic and reproducible. |
-| AI-A-13 | **Accessibility auditor** — unlabeled controls, focus traps, invisible state, small touch targets, large-text failures | P1 Accessibility Auditor | AI-A-03 | Fixtures | Deterministic rules find the structural violations; the model layer only adds severity and a human-readable explanation. Zero false positives on the clean-state fixture. |
+| ID | Task | Backlog row | Depends on | MVP dep. | Done when | Status |
+|---|---|---|---|---|---|---|
+| AI-A-09 | **Explorer candidate ranker** — pick one `proposalId` or `STOP` from a prefiltered safe set (§19.3) | P1 Explorer Agent | AI-A-01 | Fixtures | Never returns an ID outside `safeCandidates`; respects `remainingActions`; returns `STOP` when novelty is exhausted. Evaluated against B's synthetic state graph.  | **Done** — `rank_explorer_candidate`, spec 19.3 shapes |
+| AI-A-10 | Novelty and goal-progress scoring for the explorer, deterministic | P1 Explorer Agent | AI-A-09 | None | Ranks unvisited states above revisits on the synthetic graph without any model call.  | **Done** — spec 22.3 score in the same module |
+| AI-A-11 | **Selector self-heal** — rank replacement selectors using label, role, layout and visual meaning | P1 Selector Self-Heal | AI-A-03 | Fixtures | On 15 mutated-tree fixtures (renamed id, moved node, changed label, translated label), top-1 recovers the correct node in the large majority of cases; output is a *proposal* flagged for approval, never auto-applied (safety invariant 4).  | **Done (15 mutations)** — rules and ceiling model both 15/15; device proxy 13/15 |
+| AI-A-12 | **Failure detective** — classify a failure (timing / animation / selector / environment / genuine regression) and rank steps for removal to find the shortest reproduction | P1 Failure Detective | AI-A-07 | Fixtures | Classification matches the labelled cause on the labelled run-log corpus; the step-minimisation ranking is deterministic and reproducible.  | **Done** — `classify_flake` + `minimize_steps`, 20/20 on the labelled corpus |
+| AI-A-13 | **Accessibility auditor** — unlabeled controls, focus traps, invisible state, small touch targets, large-text failures | P1 Accessibility Auditor | AI-A-03 | Fixtures | Deterministic rules find the structural violations; the model layer only adds severity and a human-readable explanation. Zero false positives on the clean-state fixture.  | **Done** — 6 rules, 0 findings on the clean fixture |
 
 AI-A-13 is worth doing early despite being P1: it is almost entirely rule-based over the accessibility tree, so it is the cheapest credible demo in the whole backlog.
 
 ### Phase 3 — Integration (starts when E1/E2 land)
 
-| ID | Task | Depends on | MVP dep. | Done when |
-|---|---|---|---|---|
-| AI-A-14 | Replace fixture corpus with real captures; re-run the full eval suite | E1 capture | App | Eval pass rate on real captures is within tolerance of the fixture run. Any gap is a bug in the fixtures, and we fix the fixtures. |
-| AI-A-15 | Port the deterministic twins to Kotlin `DeterministicInferenceEngine` (§18.4) with B | AI-A-06/10, E2-03 | App | Kotlin and Python produce identical output on the shared fixture set. Byte-identical where the schema allows. |
-| AI-A-16 | Tune prompts for on-device constraints: shorter envelopes, smaller candidate sets, one image maximum, `temperature` 0.1–0.2 (§18.3) | AI-A-15 | App | Every task fits the ML Kit Prompt path or degrades to the deterministic twin without a crash. |
+| ID | Task | Depends on | MVP dep. | Done when | Status |
+|---|---|---|---|---|---|
+| AI-A-14 | Replace fixture corpus with real captures; re-run the full eval suite | E1 capture | App | Eval pass rate on real captures is within tolerance of the fixture run. Any gap is a bug in the fixtures, and we fix the fixtures.  | Blocked on E1 capture |
+| AI-A-15 | Port the deterministic twins to Kotlin `DeterministicInferenceEngine` (§18.4) with B | AI-A-06/10, E2-03 | App | Kotlin and Python produce identical output on the shared fixture set. Byte-identical where the schema allows.  | Blocked on E2-03 + AI-B-17 |
+| AI-A-16 | Tune prompts for on-device constraints: shorter envelopes, smaller candidate sets, one image maximum, `temperature` 0.1–0.2 (§18.3) | AI-A-15 | App | Every task fits the ML Kit Prompt path or degrades to the deterministic twin without a crash.  | Blocked on AI-A-15 |
 
 ### Phase 4 — P2/P3 coverage
 
 Pick these up in order of demo value once P0/P1 are green.
 
-| ID | Task | Backlog row | MVP dep. | Notes |
-|---|---|---|---|---|
-| AI-A-17 | **Edge-case generator** — locale, network, input, permission and saved-state variants as a bounded experiment matrix | P2 | Fixtures | Output is a matrix of *proposals*, each independently policy-checkable. Cap the matrix size in the schema. |
-| AI-A-18 | **Flaky-test triage** — group failures across run history by timing / animation / selector / environment | P2 | Fixtures | Reuses AI-A-12's classifier over B's run-history store. |
-| AI-A-19 | Localisation judgment layer — is this clipped, untranslated, wrong-currency, RTL-broken? | P2 | Fixtures | The pipeline is B's; you own the call it makes on each region. |
-| AI-A-20 | Test-naming and summarisation — readable test names, run summaries, changelog lines | quality-of-life | Fixtures | Cheap, high polish value in the demo and in the video script. |
-| AI-A-21 | Performance-anomaly narration — explain a slow state from telemetry features | P3 | App | Scoring is B's; the explanation is yours. |
+| ID | Task | Backlog row | MVP dep. | Notes | Status |
+|---|---|---|---|---|---|
+| AI-A-17 | **Edge-case generator** — locale, network, input, permission and saved-state variants as a bounded experiment matrix | P2 | Fixtures | Output is a matrix of *proposals*, each independently policy-checkable. Cap the matrix size in the schema.  | **Done** — `generate_edge_cases`, matrix capped in the schema |
+| AI-A-18 | **Flaky-test triage** — group failures across run history by timing / animation / selector / environment | P2 | Fixtures | Reuses AI-A-12's classifier over B's run-history store.  | **Done** — rules group, model merges/names; prompt 5,379 → 1,839 tokens |
+| AI-A-19 | Localisation judgment layer — is this clipped, untranslated, wrong-currency, RTL-broken? | P2 | Fixtures | The pipeline is B's; you own the call it makes on each region.  | Not started — needs AI-B-15 |
+| AI-A-20 | Test-naming and summarisation — readable test names, run summaries, changelog lines | quality-of-life | Fixtures | Cheap, high polish value in the demo and in the video script.  | **Done** — `name_test`; vocabulary is words, not ids |
+| AI-A-21 | Performance-anomaly narration — explain a slow state from telemetry features | P3 | App | Scoring is B's; the explanation is yours.  | Not started — needs AI-B-23 |
 
 ---
 
@@ -224,15 +277,28 @@ Rejection is not an error path to be softened. An unknown ID means the model hal
 
 ### 3.3 What a task module looks like
 
-Each file in `app/tasks/` exports exactly four things, so B's routes and your evals can treat them uniformly:
+Each file in `app/tasks/` builds exactly one `TaskSpec`, so B's routes and your
+evals can treat eight very different reasoning problems uniformly:
 
 ```python
 TASK_ID          = "rank_assertions"
-RequestModel     # pydantic, mirrors packages/schemas/ai/rank_assertions.request.json
-ResponseModel    # pydantic, strict, includes insufficient_evidence: bool
-def deterministic(req: RequestModel) -> ResponseModel: ...
-def prompt(req: RequestModel) -> Envelope: ...
+PROMPT_VERSION   = "v1"
+Request          # pydantic, mirrors packages/schemas/ai/rank_assertions.request.json
+Response         # pydantic, strict, extra="forbid", includes insufficient_evidence
+def deterministic(req: Request) -> Response: ...
+def prompt(req: Request) -> Envelope: ...
+def allowed_ids(req: Request) -> set[str]: ...       # the closed vocabulary
+def referenced_ids(resp: Response) -> set[str]: ...  # what the answer actually cited
 ```
+
+The last two are what make the merge rule generic instead of eight special cases,
+and they turned out to carry more weight than expected. A vocabulary token does
+not have to be an object id: `compile_intent` puts `kind:<candidateId>:<KIND>` and
+`value:<candidateId>:<value>` in the allowed set, so a fabricated assertion kind
+or a fabricated expected value is rejected by exactly the same code path as a
+fabricated candidate id. `classify_flake` does the same with
+`class:<runId>:<CLASS>`, which is how spec 23.2's "the model may not override the
+structured class" becomes enforced rather than merely documented.
 
 The service picks the engine. The task never knows whether it ran on the cloud, on-device or on rules. That indirection is what makes the on-device port a configuration change instead of a rewrite.
 
