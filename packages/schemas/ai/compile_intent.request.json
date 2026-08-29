@@ -1,0 +1,142 @@
+{
+  "$defs": {
+    "AssertionKind": {
+      "enum": [
+        "VISIBLE",
+        "NOT_VISIBLE",
+        "ENABLED",
+        "DISABLED",
+        "CHECKED",
+        "TEXT_EQUALS",
+        "TEXT_CONTAINS",
+        "STATE_FINGERPRINT",
+        "IMAGE_REGION_SIMILAR"
+      ],
+      "title": "AssertionKind",
+      "type": "string"
+    },
+    "IntentCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "allowedKinds": {
+          "items": {
+            "$ref": "#/$defs/AssertionKind"
+          },
+          "minItems": 1,
+          "title": "Allowedkinds",
+          "type": "array"
+        },
+        "fact": {
+          "title": "Fact",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "isEndState": {
+          "default": false,
+          "title": "Isendstate",
+          "type": "boolean"
+        },
+        "observedValue": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The exact on-screen value, verbatim. The only value this candidate is permitted to assert.",
+          "title": "Observedvalue"
+        },
+        "selectorLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selectorlabel"
+        },
+        "sourceStateId": {
+          "title": "Sourcestateid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "fact",
+        "sourceStateId",
+        "allowedKinds"
+      ],
+      "title": "IntentCandidate",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/compile_intent.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Compile a stated intent into grounded assertions over observed candidates. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedCandidateIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowedcandidateids",
+      "type": "array"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/IntentCandidate"
+      },
+      "maxItems": 40,
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "intentText": {
+      "minLength": 1,
+      "title": "Intenttext",
+      "type": "string"
+    },
+    "languageCode": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "BCP-47. Hinglish intents arrive as en-IN or hi-IN.",
+      "title": "Languagecode"
+    },
+    "maxAssertions": {
+      "default": 4,
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Maxassertions",
+      "type": "integer"
+    },
+    "targetPackage": {
+      "title": "Targetpackage",
+      "type": "string"
+    }
+  },
+  "required": [
+    "intentText",
+    "targetPackage",
+    "candidates",
+    "allowedCandidateIds"
+  ],
+  "title": "compile_intent request",
+  "type": "object"
+}

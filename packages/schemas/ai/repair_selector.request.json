@@ -1,0 +1,322 @@
+{
+  "$defs": {
+    "BoundsRatio": {
+      "additionalProperties": false,
+      "description": "Relative bounds only. Absolute pixels never reach a prompt, because a\ncoordinate is one careless integration away from being an action.",
+      "properties": {
+        "height": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Height",
+          "type": "number"
+        },
+        "width": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Width",
+          "type": "number"
+        },
+        "x": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "width",
+        "height"
+      ],
+      "title": "BoundsRatio",
+      "type": "object"
+    },
+    "BrokenSelector": {
+      "additionalProperties": false,
+      "properties": {
+        "contentDescription": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contentdescription"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resourceid"
+        },
+        "role": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UiRole"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        }
+      },
+      "required": [
+        "id",
+        "kind"
+      ],
+      "title": "BrokenSelector",
+      "type": "object"
+    },
+    "NodeSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "ancestorLabels": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Ancestorlabels",
+          "type": "array"
+        },
+        "bounds": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/BoundsRatio"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "checkable": {
+          "default": false,
+          "title": "Checkable",
+          "type": "boolean"
+        },
+        "checked": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checked"
+        },
+        "clickable": {
+          "default": false,
+          "title": "Clickable",
+          "type": "boolean"
+        },
+        "contentDescription": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contentdescription"
+        },
+        "editable": {
+          "default": false,
+          "title": "Editable",
+          "type": "boolean"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "focusable": {
+          "default": false,
+          "title": "Focusable",
+          "type": "boolean"
+        },
+        "hintText": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hinttext"
+        },
+        "nodeId": {
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "resourceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Resourceid"
+        },
+        "role": {
+          "$ref": "#/$defs/UiRole",
+          "default": "UNKNOWN"
+        },
+        "selected": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Selected"
+        },
+        "text": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Text"
+        },
+        "visible": {
+          "default": true,
+          "title": "Visible",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "nodeId"
+      ],
+      "title": "NodeSummary",
+      "type": "object"
+    },
+    "UiRole": {
+      "enum": [
+        "BUTTON",
+        "TEXT",
+        "INPUT",
+        "CHECKBOX",
+        "RADIO",
+        "SWITCH",
+        "IMAGE",
+        "LIST",
+        "LIST_ITEM",
+        "TAB",
+        "DIALOG",
+        "LINK",
+        "UNKNOWN"
+      ],
+      "title": "UiRole",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/repair_selector.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Propose replacement nodes for a selector that no longer resolves. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedNodeIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowednodeids",
+      "type": "array"
+    },
+    "brokenSelector": {
+      "$ref": "#/$defs/BrokenSelector"
+    },
+    "currentNodes": {
+      "items": {
+        "$ref": "#/$defs/NodeSummary"
+      },
+      "maxItems": 120,
+      "minItems": 1,
+      "title": "Currentnodes",
+      "type": "array"
+    },
+    "intentHint": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Intenthint"
+    },
+    "originalNode": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NodeSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The node as captured when the test was approved."
+    }
+  },
+  "required": [
+    "brokenSelector",
+    "currentNodes",
+    "allowedNodeIds"
+  ],
+  "title": "repair_selector request",
+  "type": "object"
+}

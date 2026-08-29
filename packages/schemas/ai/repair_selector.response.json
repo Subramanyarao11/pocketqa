@@ -1,0 +1,57 @@
+{
+  "$defs": {
+    "RankedNode": {
+      "additionalProperties": false,
+      "properties": {
+        "nodeId": {
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 400,
+          "title": "Reason",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "nodeId",
+        "score",
+        "reason"
+      ],
+      "title": "RankedNode",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/repair_selector.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Propose replacement nodes for a selector that no longer resolves. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "ranked": {
+      "items": {
+        "$ref": "#/$defs/RankedNode"
+      },
+      "title": "Ranked",
+      "type": "array"
+    },
+    "reviewRequired": {
+      "const": true,
+      "default": true,
+      "title": "Reviewrequired",
+      "type": "boolean"
+    }
+  },
+  "title": "repair_selector response",
+  "type": "object"
+}

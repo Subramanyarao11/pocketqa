@@ -1,0 +1,39 @@
+{
+  "$id": "https://pocketqa.dev/schemas/ai/explain_failure.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Explain a failed run from its classification and structured facts. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "citedFactIds": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Citedfactids",
+      "type": "array"
+    },
+    "classificationDisputed": {
+      "default": false,
+      "title": "Classificationdisputed",
+      "type": "boolean"
+    },
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "suggestedNextStep": {
+      "default": "",
+      "maxLength": 400,
+      "title": "Suggestednextstep",
+      "type": "string"
+    },
+    "summary": {
+      "default": "",
+      "maxLength": 800,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "title": "explain_failure response",
+  "type": "object"
+}

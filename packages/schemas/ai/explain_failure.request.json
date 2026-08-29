@@ -1,0 +1,257 @@
+{
+  "$defs": {
+    "DeviceContext": {
+      "additionalProperties": false,
+      "properties": {
+        "androidVersion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Androidversion"
+        },
+        "locale": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Locale"
+        },
+        "manufacturer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Manufacturer"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "networkState": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Networkstate"
+        },
+        "orientation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Orientation"
+        }
+      },
+      "title": "DeviceContext",
+      "type": "object"
+    },
+    "EvidenceFact": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/FactSource"
+        },
+        "statement": {
+          "maxLength": 300,
+          "title": "Statement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "statement"
+      ],
+      "title": "EvidenceFact",
+      "type": "object"
+    },
+    "FactSource": {
+      "enum": [
+        "STATE_DIFF",
+        "SELECTOR",
+        "TIMING",
+        "DEVICE",
+        "FIXTURE",
+        "CAPTURE",
+        "ASSERTION"
+      ],
+      "title": "FactSource",
+      "type": "string"
+    },
+    "FailedAssertionSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "evidenceStateId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidencestateid"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "observed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed"
+        }
+      },
+      "required": [
+        "label"
+      ],
+      "title": "FailedAssertionSummary",
+      "type": "object"
+    },
+    "FailureClass": {
+      "description": "Spec section 23.2. `UNKNOWN` exists so the classifier can decline rather\nthan force a run into the nearest-looking bucket.",
+      "enum": [
+        "SELECTOR_DRIFT",
+        "ASSERTION_REGRESSION",
+        "NAVIGATION_DIVERGENCE",
+        "TIMEOUT_PERFORMANCE",
+        "APP_CRASH",
+        "FIXTURE_ENVIRONMENT",
+        "CAPTURE_LIMITATION",
+        "UNKNOWN"
+      ],
+      "title": "FailureClass",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/explain_failure.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Explain a failed run from its classification and structured facts. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedFactIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowedfactids",
+      "type": "array"
+    },
+    "deviceContext": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DeviceContext"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "facts": {
+      "items": {
+        "$ref": "#/$defs/EvidenceFact"
+      },
+      "maxItems": 30,
+      "minItems": 1,
+      "title": "Facts",
+      "type": "array"
+    },
+    "failedAssertion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/FailedAssertionSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "failureClass": {
+      "$ref": "#/$defs/FailureClass"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "stepLabel": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Steplabel"
+    }
+  },
+  "required": [
+    "intent",
+    "failureClass",
+    "facts",
+    "allowedFactIds"
+  ],
+  "title": "explain_failure request",
+  "type": "object"
+}

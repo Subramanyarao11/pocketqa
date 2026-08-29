@@ -1,0 +1,27 @@
+{
+  "$id": "https://pocketqa.dev/schemas/ai/rank_explorer_candidate.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Choose the next explorer action from prefiltered safe candidates, or stop. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "choice": {
+      "default": "STOP",
+      "description": "A supplied proposalId, or the literal STOP.",
+      "title": "Choice",
+      "type": "string"
+    },
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "reason": {
+      "default": "",
+      "maxLength": 400,
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "title": "rank_explorer_candidate response",
+  "type": "object"
+}

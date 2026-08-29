@@ -1,0 +1,88 @@
+{
+  "$defs": {
+    "AssertionCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "fact": {
+          "description": "One redacted sentence stating the observed fact.",
+          "title": "Fact",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "isEndState": {
+          "default": false,
+          "description": "True when this fact was observed in the final state after the last relevant action. Drives the spec 17.3 end-state boost.",
+          "title": "Isendstate",
+          "type": "boolean"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssertionKind"
+        },
+        "sourceStateId": {
+          "title": "Sourcestateid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "fact",
+        "sourceStateId"
+      ],
+      "title": "AssertionCandidate",
+      "type": "object"
+    },
+    "AssertionKind": {
+      "enum": [
+        "VISIBLE",
+        "NOT_VISIBLE",
+        "ENABLED",
+        "DISABLED",
+        "CHECKED",
+        "TEXT_EQUALS",
+        "TEXT_CONTAINS",
+        "STATE_FINGERPRINT",
+        "IMAGE_REGION_SIMILAR"
+      ],
+      "title": "AssertionKind",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/rank_assertions.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Rank compiler-generated assertion candidates by intent relevance. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedCandidateIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowedcandidateids",
+      "type": "array"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/AssertionCandidate"
+      },
+      "maxItems": 40,
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    }
+  },
+  "required": [
+    "intent",
+    "candidates",
+    "allowedCandidateIds"
+  ],
+  "title": "rank_assertions request",
+  "type": "object"
+}

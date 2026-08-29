@@ -1,0 +1,59 @@
+{
+  "note": "Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.",
+  "tasks": {
+    "audit_accessibility": {
+      "promptVersion": "v1",
+      "request": "audit_accessibility.request.json",
+      "response": "audit_accessibility.response.json",
+      "summary": "Rate and explain accessibility findings produced by deterministic rules."
+    },
+    "classify_flake": {
+      "promptVersion": "v1",
+      "request": "classify_flake.request.json",
+      "response": "classify_flake.response.json",
+      "summary": "Classify failed runs by spec 23.2 rules and group them by shared cause."
+    },
+    "compile_intent": {
+      "promptVersion": "v3",
+      "request": "compile_intent.request.json",
+      "response": "compile_intent.response.json",
+      "summary": "Compile a stated intent into grounded assertions over observed candidates."
+    },
+    "explain_failure": {
+      "promptVersion": "v1",
+      "request": "explain_failure.request.json",
+      "response": "explain_failure.response.json",
+      "summary": "Explain a failed run from its classification and structured facts."
+    },
+    "generate_edge_cases": {
+      "promptVersion": "v1",
+      "request": "generate_edge_cases.request.json",
+      "response": "generate_edge_cases.response.json",
+      "summary": "Propose bounded locale, network, input, permission and saved-state variants."
+    },
+    "name_test": {
+      "promptVersion": "v1",
+      "request": "name_test.request.json",
+      "response": "name_test.response.json",
+      "summary": "Name a test and summarise its run using only words present in the evidence."
+    },
+    "rank_assertions": {
+      "promptVersion": "v1",
+      "request": "rank_assertions.request.json",
+      "response": "rank_assertions.response.json",
+      "summary": "Rank compiler-generated assertion candidates by intent relevance."
+    },
+    "rank_explorer_candidate": {
+      "promptVersion": "v1",
+      "request": "rank_explorer_candidate.request.json",
+      "response": "rank_explorer_candidate.response.json",
+      "summary": "Choose the next explorer action from prefiltered safe candidates, or stop."
+    },
+    "repair_selector": {
+      "promptVersion": "v1",
+      "request": "repair_selector.request.json",
+      "response": "repair_selector.response.json",
+      "summary": "Propose replacement nodes for a selector that no longer resolves."
+    }
+  }
+}

@@ -1,0 +1,79 @@
+{
+  "$defs": {
+    "EdgeCaseDimension": {
+      "enum": [
+        "LOCALE",
+        "NETWORK",
+        "INPUT",
+        "PERMISSION",
+        "SAVED_STATE"
+      ],
+      "title": "EdgeCaseDimension",
+      "type": "string"
+    },
+    "RiskLevel": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "BLOCKED"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "Variant": {
+      "additionalProperties": false,
+      "properties": {
+        "dimension": {
+          "$ref": "#/$defs/EdgeCaseDimension"
+        },
+        "expectedRisk": {
+          "$ref": "#/$defs/RiskLevel",
+          "default": "MEDIUM"
+        },
+        "rationale": {
+          "maxLength": 400,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "value": {
+          "title": "Value",
+          "type": "string"
+        },
+        "variantId": {
+          "pattern": "^v\\d{1,3}$",
+          "title": "Variantid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "variantId",
+        "dimension",
+        "value",
+        "rationale"
+      ],
+      "title": "Variant",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/generate_edge_cases.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Propose bounded locale, network, input, permission and saved-state variants. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "variants": {
+      "items": {
+        "$ref": "#/$defs/Variant"
+      },
+      "title": "Variants",
+      "type": "array"
+    }
+  },
+  "title": "generate_edge_cases response",
+  "type": "object"
+}

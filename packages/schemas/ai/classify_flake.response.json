@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "ClassifiedRun": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "evidenceKeys": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Evidencekeys",
+          "type": "array"
+        },
+        "failureClass": {
+          "$ref": "#/$defs/FailureClass"
+        },
+        "runId": {
+          "title": "Runid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "runId",
+        "failureClass",
+        "confidence"
+      ],
+      "title": "ClassifiedRun",
+      "type": "object"
+    },
+    "FailureClass": {
+      "description": "Spec section 23.2. `UNKNOWN` exists so the classifier can decline rather\nthan force a run into the nearest-looking bucket.",
+      "enum": [
+        "SELECTOR_DRIFT",
+        "ASSERTION_REGRESSION",
+        "NAVIGATION_DIVERGENCE",
+        "TIMEOUT_PERFORMANCE",
+        "APP_CRASH",
+        "FIXTURE_ENVIRONMENT",
+        "CAPTURE_LIMITATION",
+        "UNKNOWN"
+      ],
+      "title": "FailureClass",
+      "type": "string"
+    },
+    "FailureGroup": {
+      "additionalProperties": false,
+      "properties": {
+        "groupId": {
+          "pattern": "^g\\d{1,3}$",
+          "title": "Groupid",
+          "type": "string"
+        },
+        "runIds": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Runids",
+          "type": "array"
+        },
+        "sharedCause": {
+          "maxLength": 400,
+          "title": "Sharedcause",
+          "type": "string"
+        },
+        "title": {
+          "maxLength": 80,
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "groupId",
+        "title",
+        "runIds",
+        "sharedCause"
+      ],
+      "title": "FailureGroup",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/classify_flake.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Classify failed runs by spec 23.2 rules and group them by shared cause. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "classified": {
+      "items": {
+        "$ref": "#/$defs/ClassifiedRun"
+      },
+      "title": "Classified",
+      "type": "array"
+    },
+    "groups": {
+      "items": {
+        "$ref": "#/$defs/FailureGroup"
+      },
+      "title": "Groups",
+      "type": "array"
+    },
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    }
+  },
+  "title": "classify_flake response",
+  "type": "object"
+}

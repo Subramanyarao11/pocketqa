@@ -1,0 +1,181 @@
+{
+  "$defs": {
+    "FailedRun": {
+      "additionalProperties": false,
+      "properties": {
+        "features": {
+          "$ref": "#/$defs/RunFeatures"
+        },
+        "runId": {
+          "title": "Runid",
+          "type": "string"
+        },
+        "stepIndex": {
+          "minimum": 0,
+          "title": "Stepindex",
+          "type": "integer"
+        },
+        "stepLabel": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Steplabel"
+        }
+      },
+      "required": [
+        "runId",
+        "stepIndex",
+        "features"
+      ],
+      "title": "FailedRun",
+      "type": "object"
+    },
+    "RunFeatures": {
+      "additionalProperties": false,
+      "description": "Spec 23.1 deterministic features. Every field is observable by the\nexecutor without a model and without the network.",
+      "properties": {
+        "appearedAfterBudget": {
+          "default": false,
+          "title": "Appearedafterbudget",
+          "type": "boolean"
+        },
+        "crashSignal": {
+          "default": false,
+          "title": "Crashsignal",
+          "type": "boolean"
+        },
+        "expectedFactPresent": {
+          "default": false,
+          "title": "Expectedfactpresent",
+          "type": "boolean"
+        },
+        "fingerprintChanged": {
+          "default": false,
+          "title": "Fingerprintchanged",
+          "type": "boolean"
+        },
+        "fixtureResetOk": {
+          "default": true,
+          "title": "Fixtureresetok",
+          "type": "boolean"
+        },
+        "navigationActionsSucceeded": {
+          "default": true,
+          "title": "Navigationactionssucceeded",
+          "type": "boolean"
+        },
+        "processAlive": {
+          "default": true,
+          "title": "Processalive",
+          "type": "boolean"
+        },
+        "screenshotAvailable": {
+          "default": true,
+          "title": "Screenshotavailable",
+          "type": "boolean"
+        },
+        "screenshotSimilarity": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Screenshotsimilarity"
+        },
+        "selectorResolutionCount": {
+          "default": 1,
+          "minimum": 0,
+          "title": "Selectorresolutioncount",
+          "type": "integer"
+        },
+        "serviceConnected": {
+          "default": true,
+          "title": "Serviceconnected",
+          "type": "boolean"
+        },
+        "similarNodePresent": {
+          "default": false,
+          "title": "Similarnodepresent",
+          "type": "boolean"
+        },
+        "startedInExpectedState": {
+          "default": true,
+          "title": "Startedinexpectedstate",
+          "type": "boolean"
+        },
+        "treeAvailable": {
+          "default": true,
+          "title": "Treeavailable",
+          "type": "boolean"
+        },
+        "waitBudgetMs": {
+          "default": 5000,
+          "minimum": 0,
+          "title": "Waitbudgetms",
+          "type": "integer"
+        },
+        "waitElapsedMs": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Waitelapsedms",
+          "type": "integer"
+        },
+        "windowChanged": {
+          "default": false,
+          "title": "Windowchanged",
+          "type": "boolean"
+        }
+      },
+      "title": "RunFeatures",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/classify_flake.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Classify failed runs by spec 23.2 rules and group them by shared cause. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedRunIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowedrunids",
+      "type": "array"
+    },
+    "maxGroups": {
+      "default": 6,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Maxgroups",
+      "type": "integer"
+    },
+    "runs": {
+      "items": {
+        "$ref": "#/$defs/FailedRun"
+      },
+      "maxItems": 100,
+      "minItems": 1,
+      "title": "Runs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "runs",
+    "allowedRunIds"
+  ],
+  "title": "classify_flake request",
+  "type": "object"
+}

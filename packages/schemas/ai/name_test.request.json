@@ -1,0 +1,72 @@
+{
+  "$defs": {
+    "ObservedFact": {
+      "additionalProperties": false,
+      "properties": {
+        "fact": {
+          "title": "Fact",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "fact"
+      ],
+      "title": "ObservedFact",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/name_test.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Name a test and summarise its run using only words present in the evidence. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "assertionCount": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Assertioncount",
+      "type": "integer"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "observedFacts": {
+      "items": {
+        "$ref": "#/$defs/ObservedFact"
+      },
+      "maxItems": 40,
+      "title": "Observedfacts",
+      "type": "array"
+    },
+    "passed": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Passed"
+    },
+    "stepLabels": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 40,
+      "title": "Steplabels",
+      "type": "array"
+    }
+  },
+  "required": [
+    "intent"
+  ],
+  "title": "name_test request",
+  "type": "object"
+}

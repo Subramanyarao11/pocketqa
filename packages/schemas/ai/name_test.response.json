@@ -1,0 +1,33 @@
+{
+  "$id": "https://pocketqa.dev/schemas/ai/name_test.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Name a test and summarise its run using only words present in the evidence. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "changelogLine": {
+      "default": "",
+      "maxLength": 120,
+      "title": "Changelogline",
+      "type": "string"
+    },
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "name": {
+      "default": "",
+      "maxLength": 80,
+      "title": "Name",
+      "type": "string"
+    },
+    "runSummary": {
+      "default": "",
+      "maxLength": 300,
+      "title": "Runsummary",
+      "type": "string"
+    }
+  },
+  "title": "name_test response",
+  "type": "object"
+}

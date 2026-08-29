@@ -1,0 +1,58 @@
+{
+  "$defs": {
+    "AnnotatedFinding": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation": {
+          "maxLength": 400,
+          "title": "Explanation",
+          "type": "string"
+        },
+        "findingId": {
+          "title": "Findingid",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/Severity"
+        }
+      },
+      "required": [
+        "findingId",
+        "severity",
+        "explanation"
+      ],
+      "title": "AnnotatedFinding",
+      "type": "object"
+    },
+    "Severity": {
+      "enum": [
+        "INFO",
+        "MINOR",
+        "MAJOR",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/audit_accessibility.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Rate and explain accessibility findings produced by deterministic rules. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "annotated": {
+      "items": {
+        "$ref": "#/$defs/AnnotatedFinding"
+      },
+      "title": "Annotated",
+      "type": "array"
+    },
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    }
+  },
+  "title": "audit_accessibility response",
+  "type": "object"
+}

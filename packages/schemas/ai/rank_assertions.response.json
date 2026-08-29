@@ -1,0 +1,51 @@
+{
+  "$defs": {
+    "RankedCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "title": "Candidateid",
+          "type": "string"
+        },
+        "reason": {
+          "maxLength": 400,
+          "title": "Reason",
+          "type": "string"
+        },
+        "score": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Score",
+          "type": "number"
+        }
+      },
+      "required": [
+        "candidateId",
+        "score",
+        "reason"
+      ],
+      "title": "RankedCandidate",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/rank_assertions.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Rank compiler-generated assertion candidates by intent relevance. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "ranked": {
+      "items": {
+        "$ref": "#/$defs/RankedCandidate"
+      },
+      "title": "Ranked",
+      "type": "array"
+    }
+  },
+  "title": "rank_assertions response",
+  "type": "object"
+}

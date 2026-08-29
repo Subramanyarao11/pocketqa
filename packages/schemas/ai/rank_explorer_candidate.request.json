@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "RiskLevel": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "BLOCKED"
+      ],
+      "title": "RiskLevel",
+      "type": "string"
+    },
+    "SafeCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "novelty": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Novelty",
+          "type": "number"
+        },
+        "proposalId": {
+          "title": "Proposalid",
+          "type": "string"
+        },
+        "reversibleLikelihood": {
+          "default": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Reversiblelikelihood",
+          "type": "number"
+        },
+        "risk": {
+          "$ref": "#/$defs/RiskLevel",
+          "default": "LOW"
+        },
+        "selectorStability": {
+          "default": 0.8,
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Selectorstability",
+          "type": "number"
+        },
+        "visitCount": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Visitcount",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "proposalId",
+        "label",
+        "novelty"
+      ],
+      "title": "SafeCandidate",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/rank_explorer_candidate.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Choose the next explorer action from prefiltered safe candidates, or stop. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "goal": {
+      "title": "Goal",
+      "type": "string"
+    },
+    "remainingActions": {
+      "maximum": 5,
+      "minimum": 0,
+      "title": "Remainingactions",
+      "type": "integer"
+    },
+    "safeCandidates": {
+      "items": {
+        "$ref": "#/$defs/SafeCandidate"
+      },
+      "maxItems": 25,
+      "minItems": 1,
+      "title": "Safecandidates",
+      "type": "array"
+    },
+    "stateSummary": {
+      "title": "Statesummary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "goal",
+    "stateSummary",
+    "safeCandidates",
+    "remainingActions"
+  ],
+  "title": "rank_explorer_candidate request",
+  "type": "object"
+}

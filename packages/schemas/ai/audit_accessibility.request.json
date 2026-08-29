@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "Finding": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence": {
+          "maxLength": 300,
+          "title": "Evidence",
+          "type": "string"
+        },
+        "findingId": {
+          "title": "Findingid",
+          "type": "string"
+        },
+        "nodeId": {
+          "title": "Nodeid",
+          "type": "string"
+        },
+        "nodeLabel": {
+          "default": "",
+          "title": "Nodelabel",
+          "type": "string"
+        },
+        "nodeRole": {
+          "$ref": "#/$defs/UiRole",
+          "default": "UNKNOWN"
+        },
+        "ruleId": {
+          "title": "Ruleid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "findingId",
+        "ruleId",
+        "nodeId",
+        "evidence"
+      ],
+      "title": "Finding",
+      "type": "object"
+    },
+    "UiRole": {
+      "enum": [
+        "BUTTON",
+        "TEXT",
+        "INPUT",
+        "CHECKBOX",
+        "RADIO",
+        "SWITCH",
+        "IMAGE",
+        "LIST",
+        "LIST_ITEM",
+        "TAB",
+        "DIALOG",
+        "LINK",
+        "UNKNOWN"
+      ],
+      "title": "UiRole",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/audit_accessibility.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Rate and explain accessibility findings produced by deterministic rules. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedFindingIds": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowedfindingids",
+      "type": "array"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/Finding"
+      },
+      "maxItems": 60,
+      "minItems": 1,
+      "title": "Findings",
+      "type": "array"
+    },
+    "stateSummary": {
+      "title": "Statesummary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "stateSummary",
+    "findings",
+    "allowedFindingIds"
+  ],
+  "title": "audit_accessibility request",
+  "type": "object"
+}

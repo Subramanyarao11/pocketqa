@@ -1,0 +1,82 @@
+{
+  "$defs": {
+    "AssertionKind": {
+      "enum": [
+        "VISIBLE",
+        "NOT_VISIBLE",
+        "ENABLED",
+        "DISABLED",
+        "CHECKED",
+        "TEXT_EQUALS",
+        "TEXT_CONTAINS",
+        "STATE_FINGERPRINT",
+        "IMAGE_REGION_SIMILAR"
+      ],
+      "title": "AssertionKind",
+      "type": "string"
+    },
+    "CompiledAssertion": {
+      "additionalProperties": false,
+      "properties": {
+        "candidateId": {
+          "title": "Candidateid",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "expected": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expected"
+        },
+        "kind": {
+          "$ref": "#/$defs/AssertionKind"
+        },
+        "rationale": {
+          "maxLength": 400,
+          "title": "Rationale",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidateId",
+        "kind",
+        "confidence",
+        "rationale"
+      ],
+      "title": "CompiledAssertion",
+      "type": "object"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/compile_intent.response.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Compile a stated intent into grounded assertions over observed candidates. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "insufficientEvidence": {
+      "default": false,
+      "title": "Insufficientevidence",
+      "type": "boolean"
+    },
+    "selected": {
+      "items": {
+        "$ref": "#/$defs/CompiledAssertion"
+      },
+      "title": "Selected",
+      "type": "array"
+    }
+  },
+  "title": "compile_intent response",
+  "type": "object"
+}

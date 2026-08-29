@@ -1,0 +1,80 @@
+{
+  "$defs": {
+    "EdgeCaseDimension": {
+      "enum": [
+        "LOCALE",
+        "NETWORK",
+        "INPUT",
+        "PERMISSION",
+        "SAVED_STATE"
+      ],
+      "title": "EdgeCaseDimension",
+      "type": "string"
+    }
+  },
+  "$id": "https://pocketqa.dev/schemas/ai/generate_edge_cases.request.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Propose bounded locale, network, input, permission and saved-state variants. (Generated from services/ai-lab by `make schemas`. Do not hand-edit: change the Pydantic model and regenerate. Shared contract (handshake H1) \u2014 a change here is a two-track decision.)",
+  "properties": {
+    "allowedDimensionValues": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "propertyNames": {
+        "$ref": "#/$defs/EdgeCaseDimension"
+      },
+      "title": "Alloweddimensionvalues",
+      "type": "object"
+    },
+    "dimensions": {
+      "items": {
+        "$ref": "#/$defs/EdgeCaseDimension"
+      },
+      "minItems": 1,
+      "title": "Dimensions",
+      "type": "array"
+    },
+    "intent": {
+      "title": "Intent",
+      "type": "string"
+    },
+    "maxVariants": {
+      "default": 6,
+      "maximum": 20,
+      "minimum": 1,
+      "title": "Maxvariants",
+      "type": "integer"
+    },
+    "stepLabels": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 40,
+      "title": "Steplabels",
+      "type": "array"
+    },
+    "testName": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Testname"
+    }
+  },
+  "required": [
+    "intent",
+    "dimensions",
+    "allowedDimensionValues"
+  ],
+  "title": "generate_edge_cases request",
+  "type": "object"
+}
