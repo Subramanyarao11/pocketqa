@@ -71,6 +71,26 @@ def _is_sensitive_key(key: str) -> bool:
     return False
 
 
+def find_sensitive(payload: Any, _path: str = "") -> list[str]:
+    """Report where sensitive-looking values remain in a payload.
+
+    Used as a pre-flight check before anything crosses the network. Returns the
+    JSON-ish paths that still match, so a refusal can say *what* it found without
+    quoting the value itself — error strings are an exfiltration path (spec 34).
+    """
+    found: list[str] = []
+    if isinstance(payload, str):
+        _, reasons = redact_text(payload)
+        found.extend(f"{_path or '<root>'}:{reason}" for reason in reasons)
+    elif isinstance(payload, dict):
+        for key, value in payload.items():
+            found.extend(find_sensitive(value, f"{_path}.{key}" if _path else str(key)))
+    elif isinstance(payload, (list, tuple)):
+        for index, item in enumerate(payload):
+            found.extend(find_sensitive(item, f"{_path}[{index}]"))
+    return found
+
+
 def redact(payload: Any) -> Any:
     """Recursively redact a JSON-shaped payload. Called before anything leaves a
     task, local or connected (spec section 14.2)."""

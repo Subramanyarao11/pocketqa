@@ -7,6 +7,8 @@ All tests use the deterministic engine so they run without an API key.
 from __future__ import annotations
 
 import json
+
+from app.tasks.base import get as get_task
 from pathlib import Path
 
 import pytest
@@ -102,22 +104,26 @@ async def test_invalid_request_body_returns_422(client: AsyncClient):
 
 # ---- Engine fallback -------------------------------------------------------
 
-async def test_openrouter_unconfigured_falls_back(client: AsyncClient):
-    """When openrouter is requested but no API key is set, the route should
-    fall back to the deterministic engine and return a valid result."""
+async def test_connected_engine_refused_without_consent(client: AsyncClient):
+    """Spec 18.2 and CONTRIBUTING invariant 6: no connected call without explicit
+    operation-level consent. A configured API key is a deployment fact, not
+    consent, so asking for the connected engine without it must be refused."""
     payload = json.loads(
         (FIXTURES / "coupon-retry" / "rank_assertions.request.json").read_text()
     )
     resp = await client.post("/tasks/rank_assertions?engine=openrouter", json=payload)
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "result" in data
-    # Should have fallen back to deterministic
-    assert data["provenance"]["engineId"] == "deterministic-v1"
+    assert resp.status_code == 403
+    assert "consent" in resp.json()["detail"]
 
 
-async def test_auto_engine_uses_deterministic_when_no_key(client: AsyncClient):
-    """Auto engine should fall back to deterministic when no API key is set."""
+async def test_auto_never_reaches_the_network(client: AsyncClient):
+    """`auto` means deterministic, whether or not a key is configured.
+
+    The earlier version asserted deterministic only when no key was set, which
+    made "connected" the silent default on any machine that had one — the exact
+    automatic local-to-connected fall that spec 18.2 forbids. This test now holds
+    on a developer laptop with a key present, which is where it was failing.
+    """
     payload = json.loads(
         (FIXTURES / "coupon-retry" / "rank_assertions.request.json").read_text()
     )
@@ -125,6 +131,44 @@ async def test_auto_engine_uses_deterministic_when_no_key(client: AsyncClient):
     assert resp.status_code == 200
     data = resp.json()
     assert data["provenance"]["engineId"] == "deterministic-v1"
+    assert data["provenance"]["networkUsed"] is False
+
+
+async def test_consent_is_recorded_when_granted(client: AsyncClient, monkeypatch):
+    """Consent granted must reach provenance, because spec 27 puts provenance in
+    the evidence bundle and "was this sent to a third party" is the question it
+    exists to answer. The engine is stubbed so the test needs no network."""
+    from app.engines.base import InferenceProvenance, Success
+    import app.routes.tasks as routes
+
+    spec = get_task("rank_assertions")
+    payload = json.loads(
+        (FIXTURES / "coupon-retry" / "rank_assertions.request.json").read_text()
+    )
+    canned = spec.deterministic(spec.parse_request(payload))
+
+    class _Stub:
+        engine_id = "stub"
+
+        def status(self):
+            from app.engines.base import EngineStatus
+
+            return EngineStatus.READY
+
+        def generate(self, task, request, timeout_ms=15_000):
+            return Success(
+                value=canned,
+                provenance=InferenceProvenance(
+                    engine_id="stub", redaction_applied=True, network_used=True
+                ),
+            )
+
+    monkeypatch.setattr(routes, "_get_openrouter", lambda: _Stub())
+    resp = await client.post(
+        "/tasks/rank_assertions?engine=openrouter&consent=true", json=payload
+    )
+    assert resp.status_code == 200
+    assert resp.json()["provenance"]["networkUsed"] is True
 
 
 # ---- Telemetry -------------------------------------------------------------

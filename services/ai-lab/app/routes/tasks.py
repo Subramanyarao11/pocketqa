@@ -15,9 +15,11 @@ from enum import StrEnum
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request
+from starlette.concurrency import run_in_threadpool
 
 from app.config import settings as load_settings
 from app.engines.base import (
+    ConsentState,
     Failed,
     InferenceProvenance,
     InvalidOutput,
@@ -94,71 +96,89 @@ async def run_task(
     task_id: str,
     request: Request,
     engine: EngineChoice = Query(default=EngineChoice.AUTO),
+    consent: bool = Query(
+        default=False,
+        description="Explicit operation-level consent to send this request to a "
+        "connected provider. Required for engine=openrouter. Consent is per "
+        "operation, not a deployment setting.",
+    ),
 ) -> dict[str, Any]:
-    # 1. Look up task
     try:
         spec = get_task(task_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"unknown task: {task_id}")
 
-    # 2. Parse request body
     body = await request.json()
     try:
         parsed = spec.parse_request(body)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc))
 
-    # 3. Select engine
+    # Engine selection.
+    #
+    # Spec 18.2: "The gateway never falls from local to connected automatically."
+    # So `auto` resolves to deterministic, full stop. It does NOT mean "connected
+    # if a key happens to be configured" — a key is a deployment fact, and using
+    # it as consent would send every caller's evidence to a third party because
+    # an environment variable was set.
+    #
+    # The lab has no on-device engine; when one lands (AI-B-20) it slots in
+    # between deterministic and connected, and `auto` may prefer it, because it
+    # is still local.
     started = time.monotonic()
-    if engine == EngineChoice.DETERMINISTIC:
-        selected = _get_deterministic()
-    elif engine == EngineChoice.OPENROUTER:
+    consent_state = ConsentState.NOT_REQUIRED
+
+    if engine == EngineChoice.OPENROUTER:
+        if not consent:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "connected inference requires explicit operation-level consent; "
+                    "retry with consent=true. See Technical Spec 18.2 and "
+                    "CONTRIBUTING safety invariant 6."
+                ),
+            )
         selected = _get_openrouter()
+        consent_state = ConsentState.OPENROUTER_GRANTED
     else:
-        # auto: try openrouter if configured, else deterministic
-        or_engine = _get_openrouter()
-        if or_engine.status().value == "READY":
-            selected = or_engine
-        else:
-            selected = _get_deterministic()
+        selected = _get_deterministic()
 
-    # 4. Generate
-    result = selected.generate(spec, parsed)
+    # The engines are synchronous and network-bound. Calling one directly inside
+    # an async route blocks the event loop for the whole request, so the service
+    # would serialise under any concurrency.
+    result = await run_in_threadpool(selected.generate, spec, parsed)
 
-    # 5. Match result type and merge
     if isinstance(result, Success):
         outcome = merge(spec, parsed, result.value)
         provenance = outcome.annotate(result.provenance)
     else:
-        # Unavailable, Timeout, InvalidOutput, Failed — all fall back to deterministic
+        # Unavailable / Timeout / InvalidOutput / Failed all fall back to the
+        # deterministic twin. merge() already computes it, so do not run the
+        # deterministic engine a second time just to build provenance.
         outcome = merge(spec, parsed, None)
-        # Build a fallback provenance
-        fallback_engine = _get_deterministic()
-        det_result = fallback_engine.generate(spec, parsed)
-        if isinstance(det_result, Success):
-            provenance = det_result.provenance
-        else:
-            provenance = InferenceProvenance(engine_id="deterministic-v1")
-
-        # Annotate provenance with what happened
-        if isinstance(result, Unavailable):
-            from dataclasses import replace
-            provenance = replace(provenance, rejection_reason=f"fallback: {result.reason}")
-        elif isinstance(result, Timeout):
-            from dataclasses import replace
-            provenance = replace(provenance, rejection_reason=f"fallback: timeout after {result.elapsed_ms}ms")
-        elif isinstance(result, InvalidOutput):
-            from dataclasses import replace
-            provenance = replace(provenance, rejection_reason=f"fallback: invalid output")
-        elif isinstance(result, Failed):
-            from dataclasses import replace
-            provenance = replace(provenance, rejection_reason=f"fallback: {result.safe_code}")
+        provenance = InferenceProvenance(
+            engine_id=_get_deterministic().engine_id,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            consent=consent_state,
+            rejection_reason=_fallback_reason(result),
+        )
 
     elapsed_ms = int((time.monotonic() - started) * 1000)
     _record_call(task_id, elapsed_ms, provenance.engine_id)
 
-    # 6. Serialize response
     return {
         "result": outcome.value.model_dump(by_alias=True),
         "provenance": provenance.to_dict(),
     }
+
+
+def _fallback_reason(result: Any) -> str:
+    if isinstance(result, Unavailable):
+        return f"fallback: {result.reason}"
+    if isinstance(result, Timeout):
+        return f"fallback: timeout after {result.elapsed_ms}ms"
+    if isinstance(result, InvalidOutput):
+        return f"fallback: invalid output ({len(result.issues)} issue(s))"
+    if isinstance(result, Failed):
+        return f"fallback: {result.safe_code}"
+    return "fallback: unknown engine result"

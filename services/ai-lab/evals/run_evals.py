@@ -33,6 +33,7 @@ from app.config import settings  # noqa: E402
 from app.engines.base import Success  # noqa: E402
 from app.engines.deterministic import DeterministicInferenceEngine  # noqa: E402
 from app.engines.openrouter_engine import OpenRouterEngine  # noqa: E402
+from app.middleware.redaction import RedactedEngine  # noqa: E402
 from app.merge import merge  # noqa: E402
 from app.tasks import get  # noqa: E402
 from app.tasks.audit_accessibility import AuditState, detect  # noqa: E402
@@ -351,10 +352,16 @@ def build_engines(names: list[str]) -> list[tuple[str, Any, str | None]]:
         if name == "deterministic":
             built.append(("rules", DeterministicInferenceEngine(), None))
         elif name == "device":
-            built.append(("device-proxy", OpenRouterEngine(cfg.device_proxy_model),
+            # Wrapped, so the harness exercises the same path the service does.
+            # An eval that bypasses the redaction gate is measuring a
+            # configuration nobody ships.
+            built.append(("device-proxy",
+                          RedactedEngine(OpenRouterEngine(cfg.device_proxy_model)),
                           cfg.device_proxy_model))
         elif name == "ceiling":
-            built.append(("ceiling", OpenRouterEngine(cfg.ceiling_model), cfg.ceiling_model))
+            built.append(("ceiling",
+                          RedactedEngine(OpenRouterEngine(cfg.ceiling_model)),
+                          cfg.ceiling_model))
     return built
 
 
