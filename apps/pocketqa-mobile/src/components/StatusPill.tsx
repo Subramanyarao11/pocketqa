@@ -1,28 +1,35 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
-import {colors, spacing, typography} from '../theme';
+import { StyleSheet, Text, View } from "react-native";
+import { colors, radius, spacing, toneColor, type StatusTone } from "@theme";
 
-interface StatusPillProps {
+export interface StatusPillProps {
   label: string;
-  variant: 'success' | 'warning' | 'error' | 'info';
+  tone?: StatusTone;
+  icon?: React.ReactNode;
 }
 
-const variantColors = {
-  success: colors.success,
-  warning: colors.warning,
-  error: colors.error,
-  info: colors.secondary,
-};
-
-export function StatusPill({label, variant}: StatusPillProps): React.JSX.Element {
+/** Semantic pill: text + optional icon + colour that maps to a documented tone. */
+export function StatusPill({ label, tone = "dim", icon }: StatusPillProps) {
+  const fg = toneColor[tone];
+  const bg = tone === "dim" ? "transparent" : `${fg}20`;
   return (
-    <View style={[styles.pill, {backgroundColor: variantColors[variant] + '20'}]}>
-      <Text style={[styles.text, {color: variantColors[variant]}]}>{label}</Text>
+    <View style={[styles.root, { backgroundColor: bg, borderColor: tone === "dim" ? colors.border : "transparent" }]}
+          accessibilityLabel={label}>
+      {icon}
+      <Text style={[styles.text, { color: fg }]} numberOfLines={1}>{label}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  pill: {borderRadius: 99, paddingVertical: spacing.xs, paddingHorizontal: spacing.sm + 4},
-  text: {...typography.caption, fontWeight: '600'},
+  root: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    alignSelf: "flex-start",
+  },
+  text: { fontSize: 11, fontWeight: "700", letterSpacing: 0.4 },
 });

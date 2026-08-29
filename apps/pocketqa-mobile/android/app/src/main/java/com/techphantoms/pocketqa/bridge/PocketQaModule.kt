@@ -1,0 +1,119 @@
+package com.techphantoms.pocketqa.bridge
+
+import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContextBaseJavaModule
+import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.WritableMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
+import com.techphantoms.pocketqa.capture.CaptureCoordinator
+import com.techphantoms.pocketqa.compiler.CompileCoordinator
+import com.techphantoms.pocketqa.execution.ReplayExecutor
+import com.techphantoms.pocketqa.explorer.ExplorerAgent
+import com.techphantoms.pocketqa.export.ExportCoordinator
+import com.techphantoms.pocketqa.inference.InferenceRouter
+import com.techphantoms.pocketqa.policy.PolicyEngine
+import com.techphantoms.pocketqa.storage.PocketQaRepository
+
+/**
+ * PocketQaModule — the single native bridge that satisfies the
+ * PocketQaNativeApi contract declared in `src/native/types.ts`.
+ *
+ * Every command below is a stub in v0; each delegates to the coordinator that
+ * owns the concern in Kotlin.  The bridge only serializes/deserializes and
+ * enforces schema versions — business rules live in the coordinators.
+ */
+class PocketQaModule(reactContext: ReactApplicationContext) :
+    ReactContextBaseJavaModule(reactContext) {
+
+    private val repo = PocketQaRepository(reactContext)
+    private val policy = PolicyEngine()
+    private val inference = InferenceRouter(reactContext)
+    private val capture = CaptureCoordinator(reactContext, repo, policy)
+    private val compiler = CompileCoordinator(repo, inference)
+    private val executor = ReplayExecutor(reactContext, repo, policy)
+    private val explorer = ExplorerAgent(reactContext, repo, policy, inference)
+    private val export = ExportCoordinator(reactContext, repo)
+
+    override fun getName(): String = "PocketQaModule"
+
+    @ReactMethod fun addListener(eventName: String) { /* required for RN EventEmitter */ }
+    @ReactMethod fun removeListeners(count: Int) { /* required for RN EventEmitter */ }
+
+    fun emit(event: String, payload: WritableMap) {
+        reactApplicationContext
+            .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit(event, payload)
+    }
+
+    // ---------- Startup / readiness ----------
+    @ReactMethod fun getStartupState(promise: Promise) { promise.resolve(repo.startupState()) }
+    @ReactMethod fun getReadiness(promise: Promise) { promise.resolve(repo.readiness()) }
+    @ReactMethod fun openAccessibilitySettings(promise: Promise) {
+        capture.openAccessibilitySettings(); promise.resolve(null)
+    }
+    @ReactMethod fun listAllowlistedApps(promise: Promise) { promise.resolve(policy.allowlist()) }
+    @ReactMethod fun setOfflineMode(offline: Boolean, promise: Promise) {
+        repo.setOfflineMode(offline); promise.resolve(null)
+    }
+
+    // ---------- Consent + intent ----------
+    @ReactMethod fun recordConsent(promise: Promise) { repo.recordConsent(); promise.resolve(null) }
+    @ReactMethod fun createIntent(input: ReadableMap, promise: Promise) {
+        promise.resolve(repo.createIntent(input))
+    }
+
+    // ---------- Capture ----------
+    @ReactMethod fun startCapture(input: ReadableMap, promise: Promise) {
+        capture.start(input, promise)
+    }
+    @ReactMethod fun pauseCapture(id: String, promise: Promise) { capture.pause(id); promise.resolve(null) }
+    @ReactMethod fun resumeCapture(id: String, promise: Promise) { capture.resume(id); promise.resolve(null) }
+    @ReactMethod fun finishCapture(id: String, promise: Promise) { capture.finish(id, compiler, promise) }
+    @ReactMethod fun cancelCapture(id: String, del: Boolean, promise: Promise) {
+        capture.cancel(id, del); promise.resolve(null)
+    }
+    @ReactMethod fun simulateCaptureEvent(id: String, evt: ReadableMap, promise: Promise) {
+        capture.simulate(id, evt); promise.resolve(null)
+    }
+
+    // ---------- Compile / draft ----------
+    @ReactMethod fun getCompileJob(id: String, promise: Promise) { promise.resolve(compiler.job(id)) }
+    @ReactMethod fun cancelAiEnhancement(id: String, promise: Promise) { compiler.cancelAi(id); promise.resolve(null) }
+    @ReactMethod fun getDraft(id: String, promise: Promise) { promise.resolve(repo.draft(id)) }
+    @ReactMethod fun saveDraft(req: ReadableMap, promise: Promise) { promise.resolve(repo.saveDraft(req)) }
+    @ReactMethod fun validateDraft(id: String, promise: Promise) { promise.resolve(compiler.validate(id)) }
+    @ReactMethod fun approveDraft(id: String, promise: Promise) { promise.resolve(repo.approveDraft(id)) }
+
+    // ---------- Tests ----------
+    @ReactMethod fun listTests(promise: Promise) { promise.resolve(repo.listTests()) }
+    @ReactMethod fun getTest(id: String, version: Int?, promise: Promise) { promise.resolve(repo.getTest(id, version)) }
+    @ReactMethod fun startReplay(id: String, version: Int, promise: Promise) { executor.start(id, version, promise) }
+    @ReactMethod fun stopReplay(runId: String, promise: Promise) { executor.stop(runId); promise.resolve(null) }
+    @ReactMethod fun getRun(id: String, promise: Promise) { promise.resolve(repo.run(id)) }
+    @ReactMethod fun getEvidenceTimeline(id: String, promise: Promise) { promise.resolve(repo.evidenceTimeline(id)) }
+
+    // ---------- Missions ----------
+    @ReactMethod fun createMission(input: ReadableMap, promise: Promise) { promise.resolve(repo.createMission(input)) }
+    @ReactMethod fun approveAndStartMission(id: String, promise: Promise) { explorer.start(id, promise) }
+    @ReactMethod fun stopMission(id: String, promise: Promise) { explorer.stop(id); promise.resolve(null) }
+    @ReactMethod fun getMission(id: String, promise: Promise) { promise.resolve(repo.mission(id)) }
+
+    // ---------- Export ----------
+    @ReactMethod fun exportTest(id: String, version: Int, promise: Promise) { export.test(id, version, promise) }
+    @ReactMethod fun exportEvidence(id: String, promise: Promise) { export.evidence(id, promise) }
+    @ReactMethod fun shareArtifact(uri: String, mime: String, promise: Promise) { export.share(uri, mime); promise.resolve(null) }
+    @ReactMethod fun copyRedactedDiagnostics(id: String, promise: Promise) { export.copyDiagnostics(id); promise.resolve(null) }
+
+    // ---------- Providers ----------
+    @ReactMethod fun saveProviderCredential(input: ReadableMap, promise: Promise) {
+        promise.resolve(repo.saveProvider(input))
+    }
+    @ReactMethod fun deleteProviderCredential(provider: String, promise: Promise) {
+        repo.deleteProvider(provider); promise.resolve(null)
+    }
+    @ReactMethod fun deleteSession(id: String, promise: Promise) { repo.deleteSession(id); promise.resolve(null) }
+    @ReactMethod fun deleteTest(id: String, promise: Promise) { repo.deleteTest(id); promise.resolve(null) }
+    @ReactMethod fun deleteAllData(promise: Promise) { repo.deleteAll(); promise.resolve(null) }
+}

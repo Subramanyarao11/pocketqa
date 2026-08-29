@@ -1,3 +1,5 @@
 <resources>
-    <string name="app_name">PocketQaMobile</string>
+    <string name="app_name">PocketQA</string>
+    <string name="service_label">PocketQA capture</string>
+    <string name="accessibility_service_description">Records screen content and user actions inside the allowlisted PocketQA Demo Shop app while a capture session is active. Data is stored locally.</string>
 </resources>

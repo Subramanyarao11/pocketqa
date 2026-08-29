@@ -1,97 +1,103 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# PocketQA Mobile (React Native + Android)
 
-# Getting Started
+Implementation of the [PocketQA React Native Build Spec](../../PocketQA_React_Native_Build_Spec.md).
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+- **Framework:** React Native Community CLI, TypeScript strict, Hermes, New Architecture.
+- **Native:** Kotlin owns AccessibilityService capture, screenshots, UI-tree normalization,
+  Room persistence, deterministic execution, policy enforcement, redaction, AI capability
+  routing, and artifact generation.
+- **JS layer:** navigation, screens, review/editing, evidence browsing, settings, and
+  consent — all through a single typed façade (`src/native/PocketQaNative.ts`).
 
-## Step 1: Start Metro
+## Quick start
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+```bash
+# 1. Install JS deps
+cd apps/pocketqa-mobile
+npm install
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+# 2. Typecheck (no Android SDK required)
+npm run typecheck
 
-```sh
-# Using npm
+# 3. Boot Metro
 npm start
 
-# OR using Yarn
-yarn start
+# 4. In another shell, build + install the internal lab APK on the iQOO
+npm run android:lab
 ```
 
-## Step 2: Build and run your app
+If `PocketQaModule` is not yet linked (fresh RN bootstrap, first run before Kotlin
+compiles), the façade transparently falls back to `src/native/mock.ts` — a
+deterministic in-JS harness that reuses the same `@domain` modules the Kotlin side
+will call.  Every screen therefore works end-to-end against the Demo Shop
+reducer before native code exists.  The mock warns in the console so it is
+never silent.
 
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
+## Layout
 
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
-yarn android
+```text
+apps/pocketqa-mobile/
+├── android/                # Kotlin skeleton per Build Spec §5
+│   └── app/src/main/java/com/techphantoms/pocketqa/
+│       ├── bridge/         # PocketQaModule, PocketQaPackage
+│       ├── capture/        # AccessibilityService + CaptureCoordinator
+│       ├── compiler/       # CompileCoordinator
+│       ├── execution/      # ReplayExecutor
+│       ├── explorer/       # ExplorerAgent
+│       ├── inference/      # InferenceRouter (Gemini Nano / Sarvam / OpenAI)
+│       ├── policy/         # PolicyEngine — parallel to src/domain/policy.ts
+│       ├── storage/        # Room repository stub
+│       └── export/         # FileProvider-backed evidence share
+├── src/
+│   ├── app/App.tsx         # root, subscribes to native events
+│   ├── components/         # AppScreen, TopBar, Buttons, StatusPill, …
+│   ├── domain/             # Zod schemas, compiler, executor, explorer, exporter
+│   ├── features/           # 15 P0/P1 screens (see Build Spec §7)
+│   ├── native/             # Typed façade + deterministic mock
+│   ├── navigation/         # RootNavigator + RootStackParamList
+│   ├── store/              # Zustand: readiness, activeOperation, draftEditor, settings
+│   └── theme/              # Design tokens (Build Spec §9)
+├── package.json
+├── tsconfig.json
+├── babel.config.js
+├── metro.config.js
+└── app.json
 ```
 
-### iOS
+## Not scaffolded yet
 
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
+The following need `npx @react-native-community/cli init` or manual copy from a
+current React Native template — they are outside the strict-TypeScript surface
+this repo can safely check in:
 
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
+- `android/app/build.gradle` and root `android/build.gradle`
+- Gradle wrapper + settings
+- ProGuard / R8 configuration
+- Signing config (never committed)
+- `ios/` (out of scope — Android only per Build Spec §1)
 
-```sh
-bundle install
+Run the following once, replacing existing files where safe, to produce a
+buildable Android project:
+
+```bash
+npx @react-native-community/cli init _bootstrap --version 0.75.4 --skip-install --template react-native@0.75.4
+cp -R _bootstrap/android/gradlew _bootstrap/android/gradlew.bat _bootstrap/android/settings.gradle \
+      _bootstrap/android/build.gradle _bootstrap/android/gradle.properties \
+      _bootstrap/android/app/build.gradle _bootstrap/android/app/proguard-rules.pro \
+      apps/pocketqa-mobile/android/
+rm -rf _bootstrap
 ```
 
-Then, and every time you update your native dependencies, run:
+Then edit `applicationId`/`namespace` to `com.techphantoms.pocketqa`, wire
+`PocketQaPackage()` into `PocketQaApplication.kt` (already done above), and
+`npm run android:lab`.
 
-```sh
-bundle exec pod install
+## Testing
+
+```bash
+npm run typecheck        # tsc --noEmit against strict config
+npm run lint             # @react-native/eslint-config
+npm test                 # jest + RNTL
+npm run test:contracts   # canonical JSON fixture round-trip
+npm run maestro:demo     # end-to-end regression run on the Demo Shop
 ```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
-yarn ios
-```
-
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
-
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
-
-## Step 3: Modify your app
-
-Now that you have successfully run the app, let's make changes!
-
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
-
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
-
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
-
-## Congratulations! :tada:
-
-You've successfully run and modified your React Native App. :partying_face:
-
-### Now what?
-
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
-
-# Troubleshooting
-
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
-
-# Learn More
-
-To learn more about React Native, take a look at the following resources:
-
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.

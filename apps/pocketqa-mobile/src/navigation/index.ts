@@ -1,2 +1,2 @@
-export {RootNavigator} from './RootNavigator';
-export type {RootStackParamList} from './types';
+export * from "./types";
+export * from "./RootNavigator";

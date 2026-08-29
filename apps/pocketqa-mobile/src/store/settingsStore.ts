@@ -1,11 +1,17 @@
-import {create} from 'zustand';
+import { create } from "zustand";
 
 interface SettingsState {
-  aiLabUrl: string;
-  setAiLabUrl: (url: string) => void;
+  reduceEvidenceThumbnails: boolean;
+  defaultRetentionDays: number;
+  preferredIntentMode: "typed" | "voice";
+  agentLabVisible: boolean;
+  set: (patch: Partial<SettingsState>) => void;
 }
 
-export const useSettingsStore = create<SettingsState>(set => ({
-  aiLabUrl: 'http://localhost:8000',
-  setAiLabUrl: (url: string) => set({aiLabUrl: url}),
+export const useSettingsStore = create<SettingsState>((set) => ({
+  reduceEvidenceThumbnails: false,
+  defaultRetentionDays: 30,
+  preferredIntentMode: "typed",
+  agentLabVisible: true,
+  set: (patch) => set(patch),
 }));

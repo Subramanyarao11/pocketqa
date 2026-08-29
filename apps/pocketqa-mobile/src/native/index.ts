@@ -1,2 +1,2 @@
-export {pocketQaNative} from './PocketQaNative';
-export type {PocketQaNative, CaptureResult} from './PocketQaNative';
+export * from "./types";
+export { PocketQaNative } from "./PocketQaNative";

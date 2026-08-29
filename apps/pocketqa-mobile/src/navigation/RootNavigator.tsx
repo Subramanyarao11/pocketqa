@@ -1,61 +1,69 @@
-import React from 'react';
-import {createNativeStackNavigator} from '@react-navigation/native-stack';
-import {RootStackParamList} from './types';
-import {WelcomeScreen} from '../features/onboarding/WelcomeScreen';
-import {HomeScreen} from '../features/home/HomeScreen';
-import {IntentScreen} from '../features/intent/IntentScreen';
-import {CaptureStatusScreen} from '../features/capture/CaptureStatusScreen';
-import {ReviewTestScreen} from '../features/review/ReviewTestScreen';
-import {ReplayScreen} from '../features/replay/ReplayScreen';
-import {EvidenceScreen} from '../features/evidence/EvidenceScreen';
-import {ExplorerScreen} from '../features/explorer/ExplorerScreen';
-import {SettingsScreen} from '../features/settings/SettingsScreen';
-import {colors} from '../theme';
+import { NavigationContainer } from "@react-navigation/native";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "./types";
+import { StartupGateScreen } from "@features/onboarding/StartupGateScreen";
+import { WelcomeScreen } from "@features/onboarding/WelcomeScreen";
+import { DisclosureScreen } from "@features/onboarding/DisclosureScreen";
+import { ReadinessScreen } from "@features/onboarding/ReadinessScreen";
+import { HomeScreen } from "@features/home/HomeScreen";
+import { IntentScreen } from "@features/intent/IntentScreen";
+import { CaptureReadyScreen } from "@features/capture/CaptureReadyScreen";
+import { CaptureStatusScreen } from "@features/capture/CaptureStatusScreen";
+import { CompileProgressScreen } from "@features/capture/CompileProgressScreen";
+import { ReviewTestScreen } from "@features/review/ReviewTestScreen";
+import { ReplayMissionControlScreen } from "@features/replay/ReplayMissionControlScreen";
+import { EvidenceScreen } from "@features/evidence/EvidenceScreen";
+import { AgentLabScreen } from "@features/explorer/AgentLabScreen";
+import { MissionReviewScreen } from "@features/explorer/MissionReviewScreen";
+import { ExplorerMissionControlScreen } from "@features/explorer/ExplorerMissionControlScreen";
+import { SettingsScreen } from "@features/settings/SettingsScreen";
+import { SelectorCandidatesScreen } from "@features/review/SelectorCandidatesScreen";
+import { EvidenceDetailScreen } from "@features/evidence/EvidenceDetailScreen";
+import { ProviderSettingsScreen } from "@features/settings/ProviderSettingsScreen";
+import { DataAndPrivacyScreen } from "@features/settings/DataAndPrivacyScreen";
+import { AboutAndLimitsScreen } from "@features/settings/AboutAndLimitsScreen";
+import { colors } from "@theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
-export function RootNavigator(): React.JSX.Element {
+export function RootNavigator() {
   return (
-    <Stack.Navigator
-      initialRouteName="Welcome"
-      screenOptions={{
-        headerStyle: {backgroundColor: colors.surface},
-        headerTintColor: colors.text,
-        contentStyle: {backgroundColor: colors.background},
-      }}>
-      <Stack.Screen
-        name="Welcome"
-        component={WelcomeScreen}
-        options={{headerShown: false}}
-      />
-      <Stack.Screen name="Home" component={HomeScreen} options={{title: 'PocketQA'}} />
-      <Stack.Screen name="Intent" component={IntentScreen} options={{title: 'New Test'}} />
-      <Stack.Screen
-        name="CaptureStatus"
-        component={CaptureStatusScreen}
-        options={{title: 'Capturing'}}
-      />
-      <Stack.Screen
-        name="ReviewTest"
-        component={ReviewTestScreen}
-        options={{title: 'Review Test'}}
-      />
-      <Stack.Screen name="Replay" component={ReplayScreen} options={{title: 'Replay'}} />
-      <Stack.Screen
-        name="Evidence"
-        component={EvidenceScreen}
-        options={{title: 'Evidence'}}
-      />
-      <Stack.Screen
-        name="Explorer"
-        component={ExplorerScreen}
-        options={{title: 'Explorer'}}
-      />
-      <Stack.Screen
-        name="Settings"
-        component={SettingsScreen}
-        options={{title: 'Settings'}}
-      />
-    </Stack.Navigator>
+    <NavigationContainer
+      theme={{
+        dark: true,
+        colors: {
+          primary: colors.lime,
+          background: colors.background,
+          card: colors.surface,
+          text: colors.text,
+          border: colors.border,
+          notification: colors.cyan,
+        },
+      }}
+    >
+      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+        <Stack.Screen name="StartupGate" component={StartupGateScreen} />
+        <Stack.Screen name="Welcome" component={WelcomeScreen} />
+        <Stack.Screen name="Disclosure" component={DisclosureScreen} />
+        <Stack.Screen name="Readiness" component={ReadinessScreen} />
+        <Stack.Screen name="Home" component={HomeScreen} />
+        <Stack.Screen name="Intent" component={IntentScreen} />
+        <Stack.Screen name="CaptureReady" component={CaptureReadyScreen} />
+        <Stack.Screen name="CaptureStatus" component={CaptureStatusScreen} />
+        <Stack.Screen name="CompileProgress" component={CompileProgressScreen} />
+        <Stack.Screen name="ReviewTest" component={ReviewTestScreen} />
+        <Stack.Screen name="ReplayMissionControl" component={ReplayMissionControlScreen} />
+        <Stack.Screen name="Evidence" component={EvidenceScreen} />
+        <Stack.Screen name="AgentLab" component={AgentLabScreen} />
+        <Stack.Screen name="MissionReview" component={MissionReviewScreen} />
+        <Stack.Screen name="ExplorerMissionControl" component={ExplorerMissionControlScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="SelectorCandidates" component={SelectorCandidatesScreen} options={{ presentation: "modal" }} />
+        <Stack.Screen name="EvidenceDetail" component={EvidenceDetailScreen} options={{ presentation: "modal" }} />
+        <Stack.Screen name="ProviderSettings" component={ProviderSettingsScreen} />
+        <Stack.Screen name="DataAndPrivacy" component={DataAndPrivacyScreen} />
+        <Stack.Screen name="AboutAndLimits" component={AboutAndLimitsScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }

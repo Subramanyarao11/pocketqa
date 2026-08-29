@@ -1,23 +1,35 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
-import {colors, spacing, typography} from '../theme';
+import { StyleSheet, Text, View } from "react-native";
+import { colors, spacing, typography } from "@theme";
+import { PrimaryButton } from "./Button";
 
-interface EmptyStateProps {
+export interface EmptyStateProps {
   title: string;
-  description: string;
+  detail: string;
+  action?: { label: string; onPress: () => void };
+  icon?: React.ReactNode;
 }
 
-export function EmptyState({title, description}: EmptyStateProps): React.JSX.Element {
+/** Single explanation + one primary action (§8). */
+export function EmptyState({ title, detail, action, icon }: EmptyStateProps) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>{title}</Text>
-      <Text style={styles.description}>{description}</Text>
+    <View style={styles.root}>
+      {icon}
+      <Text style={typography.title}>{title}</Text>
+      <Text style={[typography.bodyMuted, styles.detail]}>{detail}</Text>
+      {action && <PrimaryButton label={action.label} onPress={action.onPress} />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, justifyContent: 'center', alignItems: 'center', padding: spacing.lg},
-  title: {...typography.h3, color: colors.text, marginBottom: spacing.sm},
-  description: {...typography.body, color: colors.textSecondary, textAlign: 'center'},
+  root: {
+    padding: spacing.xxl,
+    alignItems: "center",
+    gap: spacing.md,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.border,
+    borderRadius: 16,
+  },
+  detail: { textAlign: "center", maxWidth: 320 },
 });

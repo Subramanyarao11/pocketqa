@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PocketQA capture-service configuration.
+
+  Scope is intentionally minimal:
+   * only the allowlisted target package (Demo Shop) is inspected;
+   * events other than window-content changes are filtered client-side;
+   * screenshot is requested per-window only from the service, never
+     via MediaProjection or arbitrary display capture.
+-->
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewClicked|typeViewFocused|typeViewTextChanged"
+    android:packageNames="com.techphantoms.pocketqa.demoshop"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="80"
+    android:canRetrieveWindowContent="true"
+    android:canRequestTouchExplorationMode="false"
+    android:canPerformGestures="false"
+    android:canTakeScreenshot="true"
+    android:description="@string/accessibility_service_description" />

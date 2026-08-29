@@ -1,32 +1,36 @@
-import React from 'react';
-import {View, Text, StyleSheet} from 'react-native';
-import {useNavigation} from '@react-navigation/native';
-import {NativeStackNavigationProp} from '@react-navigation/native-stack';
-import {RootStackParamList} from '../../navigation/types';
-import {PrimaryButton} from '../../components/PrimaryButton';
-import {colors, spacing, typography} from '../../theme';
+import { Text, View } from "react-native";
+import type { ScreenProps } from "@navigation";
+import { AppScreen, BottomActionBar, Card, PrimaryButton, StatusPill } from "@components";
+import { spacing, typography } from "@theme";
 
-type Nav = NativeStackNavigationProp<RootStackParamList, 'Welcome'>;
-
-export function WelcomeScreen(): React.JSX.Element {
-  const navigation = useNavigation<Nav>();
+export function WelcomeScreen({ navigation }: ScreenProps<"Welcome">) {
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>PocketQA</Text>
-      <Text style={styles.subtitle}>AI-powered mobile testing</Text>
-      <PrimaryButton title="Get Started" onPress={() => navigation.navigate('Home')} />
-    </View>
+    <>
+      <AppScreen>
+        <Text style={typography.eyebrow}>PocketQA · Tech Phantoms</Text>
+        <Text style={[typography.title, { fontSize: 26, lineHeight: 32 }]}>Show one mobile flow. Get the regression test.</Text>
+        <Text style={typography.body}>
+          Say what must remain true. Demonstrate the flow once. PocketQA compiles a
+          reviewable test, replays it deterministically, and produces evidence you can
+          share — all on this device.
+        </Text>
+        <Card>
+          <StatusPill label="Local by default" tone="lime" />
+          <Text style={typography.bodyMuted}>
+            The core loop works with airplane mode on. Sarvam and OpenAI are optional and single-operation.
+          </Text>
+        </Card>
+        <Card>
+          <StatusPill label="Human review before action" tone="cyan" />
+          <Text style={typography.bodyMuted}>
+            AI proposes; a deterministic executor is the only thing that acts. Every action is inside an allowlisted app.
+          </Text>
+        </Card>
+      </AppScreen>
+      <BottomActionBar>
+        <View style={{ flex: 1 }} />
+        <PrimaryButton label="Continue" onPress={() => navigation.navigate("Disclosure")} />
+      </BottomActionBar>
+    </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    padding: spacing.lg,
-  },
-  title: {...typography.h1, color: colors.text, marginBottom: spacing.sm},
-  subtitle: {...typography.body, color: colors.textSecondary, marginBottom: spacing.xl},
-});
