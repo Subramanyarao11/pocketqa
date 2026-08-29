@@ -1,0 +1,9 @@
+{
+  "name": "@pocketqa/ai-fixtures",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "echo 'No tests yet'"
+  }
+}
