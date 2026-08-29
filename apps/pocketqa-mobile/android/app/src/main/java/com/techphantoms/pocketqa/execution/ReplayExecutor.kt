@@ -55,6 +55,7 @@ class ReplayExecutor(
 
         val runId = "run_" + UUID.randomUUID().toString().take(8)
         OperationLock.acquire(OperationLock.Kind.REPLAY, runId)
+        repo.beginActiveOperation("REPLAY", runId)
         stopSignals[runId] = false
         val out = Arguments.createMap()
         out.putString("runId", runId)
@@ -251,6 +252,7 @@ class ReplayExecutor(
 
         emitFinished(runId, summary)
         OperationLock.release(OperationLock.Kind.REPLAY, runId)
+        repo.endActiveOperation()
         stopSignals.remove(runId)
         jobs.remove(runId)
     }

@@ -214,6 +214,9 @@ class CaptureCoordinator(
         com.techphantoms.pocketqa.OperationLock.acquire(
             com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, session.id
         )
+        // Durable record of the in-flight operation, so a restart can offer
+        // resume-or-cancel instead of silently wedging the next session.
+        repo.beginActiveOperation("CAPTURE", session.id)
         activePackage.set(session.packageName)
         activeSession.set(session.id)
         // Sink stable states from the accessibility service into Room and echo
@@ -241,7 +244,20 @@ class CaptureCoordinator(
                 at = pending.at,
             )
         }
-        launchDemoShop(session.packageName)
+        if (!launchDemoShop(session.packageName)) {
+            // Unwind: a session that never reaches the target app records
+            // nothing, and leaving it "Recording" holds the operation lock.
+            activePackage.set(null)
+            activeSession.set(null)
+            stateSink = null
+            setEventsSink(null)
+            com.techphantoms.pocketqa.OperationLock.release(
+                com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, session.id
+            )
+            repo.endActiveOperation()
+            repo.cancelSession(session.id, true)
+            return promise.reject("TARGET_LAUNCH_FAILED", "could not bring ${session.packageName} to the front")
+        }
         val out = com.facebook.react.bridge.Arguments.createMap()
         out.putString("sessionId", session.id)
         promise.resolve(out)
@@ -254,11 +270,19 @@ class CaptureCoordinator(
     } catch (_: Throwable) { "screen" }
 
     private fun emitCaptureProgress(sessionId: String, packageName: String) {
+        // stepCount and elapsedMs were hardcoded to 0 here, so the capture screen
+        // read "0 steps captured · 0 ms" no matter how much had actually been
+        // recorded. Read the session row instead — it is the thing
+        // incrementSessionStepCount has been updating all along.
+        val session = repo.sessionOrNull(sessionId)
         val payload = com.facebook.react.bridge.Arguments.createMap()
         payload.putString("sessionId", sessionId)
-        payload.putString("state", "recording")
-        payload.putInt("stepCount", 0)
-        payload.putInt("elapsedMs", 0)
+        payload.putString("state", session?.state ?: "recording")
+        payload.putInt("stepCount", session?.stepCount ?: 0)
+        payload.putInt(
+            "elapsedMs",
+            session?.let { (System.currentTimeMillis() - it.startedAt).toInt().coerceAtLeast(0) } ?: 0,
+        )
         payload.putString("packageName", packageName)
         emitEvent("CAPTURE_PROGRESS", payload)
     }
@@ -272,6 +296,9 @@ class CaptureCoordinator(
             return
         }
         repo.appendSimulatedEvent(sessionId, evt)
+        // Without this the step lands in Room and the UI never hears about it,
+        // so the canonical-scenario buttons appeared to do nothing at all.
+        emitCaptureProgress(sessionId, activePackage.get() ?: "")
     }
 
     private fun emitEvent(type: String, payload: com.facebook.react.bridge.WritableMap) {
@@ -294,9 +321,45 @@ class CaptureCoordinator(
         com.techphantoms.pocketqa.OperationLock.release(
             com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, sessionId
         )
+        repo.endActiveOperation()
         val out = com.facebook.react.bridge.Arguments.createMap()
         out.putString("compileJobId", jobId)
         promise.resolve(out)
+
+        // CompileProgressScreen listens for COMPILE_PROGRESS to render the stage
+        // list and navigates to review only on COMPILE_FINISHED. Neither event
+        // was emitted anywhere, so the screen sat on "Compiling" forever even
+        // though repo.compileFromSession had already finished synchronously.
+        emitCompileEvents(jobId)
+    }
+
+    /** compileFromSession is synchronous, so by the time we get here the work is
+     *  done. Report the stages, then hand the draft id to the screen waiting for
+     *  it. */
+    private fun emitCompileEvents(jobId: String) {
+        val job = repo.getCompileJob(jobId)
+        val draftId = if (job.hasKey("draftId")) job.getString("draftId") else null
+
+        val progress = com.facebook.react.bridge.Arguments.createMap()
+        progress.putString("jobId", jobId)
+        progress.putString("engine", if (job.hasKey("engine")) job.getString("engine") else "deterministic-local")
+        progress.putString("stage", "validating")
+        progress.putBoolean("finished", true)
+        emitEvent("COMPILE_PROGRESS", progress)
+
+        if (draftId == null) {
+            // Nothing to review. Say so rather than leaving the screen spinning.
+            val failed = com.facebook.react.bridge.Arguments.createMap()
+            failed.putString("jobId", jobId)
+            failed.putString("error", "compile produced no draft")
+            emitEvent("COMPILE_FAILED", failed)
+            return
+        }
+
+        val done = com.facebook.react.bridge.Arguments.createMap()
+        done.putString("jobId", jobId)
+        done.putString("draftId", draftId)
+        emitEvent("COMPILE_FINISHED", done)
     }
 
     fun cancel(sessionId: String, deleteArtifacts: Boolean) {
@@ -310,9 +373,43 @@ class CaptureCoordinator(
         repo.cancelSession(sessionId, deleteArtifacts)
     }
 
-    private fun launchDemoShop(pkg: String) {
-        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg) ?: return
-        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-        ctx.startActivity(launch)
+    /**
+     * Bring the target app to the front so the demonstration can begin.
+     *
+     * Two things made the old version fail intermittently, and silently:
+     *
+     *  - it started the activity from the *application* context. Android 10+
+     *    restricts background activity starts, and the application context does
+     *    not carry the caller's foreground privilege reliably. Starting from the
+     *    current Activity when one exists does.
+     *  - every failure path was a bare `?: return`, so a missing launch intent
+     *    or a blocked start looked identical to success. The session went into
+     *    "Recording" with the target app never in front, the service (correctly
+     *    scoped to the target package) saw nothing, and capture recorded zero
+     *    steps with no clue why.
+     *
+     * Returns false when the target could not be brought forward, so the caller
+     * can fail the session instead of recording nothing.
+     */
+    private fun launchDemoShop(pkg: String): Boolean {
+        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)
+        if (launch == null) {
+            android.util.Log.w("PocketQaCapture", "no launch intent for $pkg")
+            return false
+        }
+        launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return try {
+            val activity = ctx.currentActivity
+            if (activity != null) {
+                activity.startActivity(launch)
+            } else {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                ctx.startActivity(launch)
+            }
+            true
+        } catch (t: Throwable) {
+            android.util.Log.w("PocketQaCapture", "failed to launch $pkg: ${t.javaClass.simpleName}")
+            false
+        }
     }
 }

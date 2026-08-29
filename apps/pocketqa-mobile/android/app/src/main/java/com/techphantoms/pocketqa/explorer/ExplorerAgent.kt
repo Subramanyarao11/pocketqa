@@ -52,6 +52,7 @@ class ExplorerAgent(
             ?: return promise.reject("MISSION_NOT_FOUND", "mission not found")
 
         OperationLock.acquire(OperationLock.Kind.MISSION, missionId)
+        repo.beginActiveOperation("MISSION", missionId)
         stopSignals[missionId] = false
         promise.resolve(null)
 
@@ -148,6 +149,7 @@ class ExplorerAgent(
         repo.writeMissionSummary(missionId, summary.toString())
         emitFinished(missionId, summary)
         OperationLock.release(OperationLock.Kind.MISSION, missionId)
+        repo.endActiveOperation()
         stopSignals.remove(missionId)
     }
 

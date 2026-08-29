@@ -46,6 +46,10 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     // -- Readiness -----------------------------------------------------------------
 
     fun startupState(): WritableMap = runBlocking {
+        // Do this first: the lock is in-memory and Room is durable, so a stale
+        // holder from an abandoned session must be cleared before anything reads
+        // the state and decides the app is busy.
+        reconcileOperationLockNow()
         val map = Arguments.createMap()
         val consented = dao.consent() != null
         map.putBoolean("onboardingComplete", consented && accessibilityEnabled())
@@ -123,6 +127,10 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         dao.upsertActiveOp(ActiveOperationRow(kind = "CAPTURE", operationId = id, checkpointedAt = sessionRow.startedAt))
         Session(id, sessionRow.packageName)
     }
+
+    /** The session row, or null. Capture progress reads this so the UI reports
+     *  the counters Room actually holds rather than a hardcoded zero. */
+    fun sessionOrNull(sessionId: String): SessionRow? = runBlocking { dao.session(sessionId) }
 
     fun appendSimulatedEvent(sessionId: String, evt: ReadableMap) = runBlocking {
         val payload = JsonBridge.readableMapToJsonString(evt)
@@ -449,6 +457,54 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         }
         out.putString("suggestion", suggestion)
         out
+    }
+
+    /**
+     * Record that an operation is in flight.
+     *
+     * `upsertActiveOp` existed in the DAO but was never called from anywhere, so
+     * `activeOp()` always returned null: startupState could not offer to resume
+     * or cancel, and the in-memory OperationLock had nothing to reconcile
+     * against. That combination wedges the app — an abandoned capture holds the
+     * process-wide lock and every later startCapture fails with a conflict until
+     * the process is killed.
+     */
+    fun beginActiveOperation(kind: String, operationId: String) = runBlocking {
+        dao.upsertActiveOp(ActiveOperationRow(
+            id = 0, kind = kind, operationId = operationId,
+            checkpointedAt = System.currentTimeMillis(),
+        ))
+    }
+
+    fun endActiveOperation() = runBlocking { dao.clearActiveOp() }
+
+    /**
+     * Align the in-memory lock with Room, which is the durable source of truth.
+     *
+     * Called on startup. Room says nothing is running -> release whatever the
+     * lock is holding, because it is a leak from an abandoned session. Room says
+     * something is running -> re-acquire so a process restart does not lose the
+     * guard while the JS layer offers resume-or-cancel.
+     */
+    fun reconcileOperationLock() = runBlocking { reconcileOperationLockNow() }
+
+    /** Suspend form, so callers already inside runBlocking do not nest one. */
+    private suspend fun reconcileOperationLockNow() {
+        val room = dao.activeOp()
+        val held = com.techphantoms.pocketqa.OperationLock.current()
+        if (room == null) {
+            if (held != null) com.techphantoms.pocketqa.OperationLock.clear()
+            return
+        }
+        val kind = runCatching {
+            com.techphantoms.pocketqa.OperationLock.Kind.valueOf(room.kind)
+        }.getOrNull() ?: return
+        if (held == null) {
+            com.techphantoms.pocketqa.OperationLock.acquire(kind, room.operationId)
+        } else if (held.kind != kind || held.id != room.operationId) {
+            com.techphantoms.pocketqa.OperationLock.clear()
+            com.techphantoms.pocketqa.OperationLock.acquire(kind, room.operationId)
+        }
     }
 
     fun checkpoint() = runBlocking {

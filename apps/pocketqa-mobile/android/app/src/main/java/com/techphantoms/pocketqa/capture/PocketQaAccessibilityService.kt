@@ -54,6 +54,7 @@ class PocketQaAccessibilityService : AccessibilityService() {
         latestPackage = pkg
         latestScreen = event.className?.toString()?.substringAfterLast('.') ?: latestScreen ?: "screen"
 
+
         // Also forward the raw event so the coordinator can classify taps /
         // typing / navigation transitions immediately.
         CaptureCoordinator.onEvent(event, root)
