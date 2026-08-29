@@ -88,3 +88,10 @@ services/ai-lab/.venv/
 services/ai-lab/.env
 services/ai-lab/**/__pycache__/
 .pytest_cache/
+
+# React Native bundle output. `react-native bundle` writes the JS bundle and the
+# assets it references into the Android source tree; both are build products.
+apps/pocketqa-mobile/android/app/src/main/assets/index.android.bundle
+apps/pocketqa-mobile/android/app/src/main/assets/index.android.bundle.map
+apps/pocketqa-mobile/android/app/src/main/res/drawable-*/
+apps/pocketqa-mobile/android/app/src/main/res/raw/

@@ -1,6 +1,11 @@
-pluginManagement { includeBuild("../../../node_modules/@react-native/gradle-plugin") }
+pluginManagement { includeBuild(new File(["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json')"].execute(null, rootDir).text.trim()).getParentFile().absolutePath) }
 plugins { id("com.facebook.react.settings") }
 extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
 rootProject.name = 'PocketQaMobile'
 include ':app'
-includeBuild('../../../node_modules/@react-native/gradle-plugin')
+// Asking node where the package is, rather than hardcoding
+// ../../../node_modules, because npm does not guarantee where it hoists a
+// workspace dependency — it has resolved both to the repo root and to
+// apps/pocketqa-mobile/node_modules on this machine, and the hardcoded path
+// broke the build the first time that changed.
+includeBuild(new File(["node", "--print", "require.resolve('@react-native/gradle-plugin/package.json')"].execute(null, rootDir).text.trim()).getParentFile().absolutePath)

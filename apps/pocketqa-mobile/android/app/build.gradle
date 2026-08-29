@@ -4,15 +4,25 @@ apply plugin: "org.jetbrains.kotlin.plugin.serialization"
 apply plugin: "com.google.devtools.ksp"
 apply plugin: "com.facebook.react"
 
+// Ask node where each package is instead of hardcoding ../../../../node_modules.
+// npm does not guarantee where it hoists a workspace dependency — these packages
+// have resolved both to the repo root and to apps/pocketqa-mobile/node_modules
+// on this machine, and the hardcoded paths broke the build when that changed.
+def rnPkgDir = { String pkg ->
+    new File(["node", "--print", "require.resolve('${pkg}/package.json')"]
+        .execute(null, rootDir).text.trim()).getParentFile()
+}
+
 react {
     root = file("../../")
-    reactNativeDir = file("../../../../node_modules/react-native")
-    codegenDir = file("../../../../node_modules/@react-native/codegen")
-    cliFile = file("../../../../node_modules/react-native/cli.js")
+    reactNativeDir = rnPkgDir('react-native')
+    codegenDir = rnPkgDir('@react-native/codegen')
+    cliFile = new File(rnPkgDir('react-native'), 'cli.js')
     debuggableVariants = ["internalLabDebug", "internalLabDebugOptimized"]
-    hermesCommand = file("../../../../node_modules/hermes-compiler/hermesc/%OS-BIN%/hermesc").absolutePath
+    hermesCommand = new File(rnPkgDir('hermes-compiler'), 'hermesc/%OS-BIN%/hermesc').absolutePath
     autolinkLibrariesWithApp()
 }
+
 
 android {
     namespace "com.techphantoms.pocketqa"
