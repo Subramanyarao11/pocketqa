@@ -37,13 +37,98 @@ class CaptureCoordinator(
         fun detach(s: PocketQaAccessibilityService) { service.compareAndSet(s, null) }
         fun activePackage(): String? = activePackage.get()
 
+        /**
+         * Buffer of pending raw events since the last stable state. Each
+         * incoming AccessibilityEvent is classified into a normalised
+         * `CaptureEvent`; when the next stable state arrives we flush the
+         * buffer with `beforeStateId` = previous stable, `afterStateId` = new.
+         */
+        private val pendingEvents = java.util.concurrent.ConcurrentLinkedQueue<PendingEvent>()
+        @Volatile private var lastStableStateId: String? = null
+
+        data class PendingEvent(
+            val action: String,
+            val label: String,
+            val nodeId: String?,
+            val input: String?,
+            val at: Long,
+        )
+
         fun onEvent(event: AccessibilityEvent, root: AccessibilityNodeInfo?) {
-            // Reserved for future micro-classification. The debounced snapshot
-            // from [onStableState] carries the authoritative UI state.
+            val classified = classify(event, root) ?: return
+            pendingEvents += classified
+        }
+
+        private fun classify(event: AccessibilityEvent, root: AccessibilityNodeInfo?): PendingEvent? {
+            val src = event.source
+            val text = src?.text?.toString() ?: event.text?.joinToString(" ")?.takeIf { it.isNotBlank() }
+            val cd = src?.contentDescription?.toString()
+            val label = text ?: cd ?: "Unknown target"
+            val nodeId = pathIdFor(root, src)
+            return when (event.eventType) {
+                AccessibilityEvent.TYPE_VIEW_CLICKED -> PendingEvent(
+                    action = "tap", label = label, nodeId = nodeId, input = null,
+                    at = System.currentTimeMillis(),
+                )
+                AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> PendingEvent(
+                    action = "longPress", label = label, nodeId = nodeId, input = null,
+                    at = System.currentTimeMillis(),
+                )
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> PendingEvent(
+                    action = "typeText", label = label, nodeId = nodeId,
+                    input = src?.text?.toString() ?: event.text?.joinToString(),
+                    at = System.currentTimeMillis(),
+                )
+                else -> null
+            }
+        }
+
+        /**
+         * Locate the tree path ID assigned by [UiTreeCapture] for a given
+         * `AccessibilityNodeInfo` — matches by equality to preserve stability.
+         */
+        private fun pathIdFor(
+            root: AccessibilityNodeInfo?,
+            target: AccessibilityNodeInfo?,
+        ): String? {
+            if (root == null || target == null) return null
+            return searchPath(root, target, "n")
+        }
+
+        private fun searchPath(
+            node: AccessibilityNodeInfo,
+            target: AccessibilityNodeInfo,
+            path: String,
+        ): String? {
+            if (node == target) return path
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                val hit = searchPath(child, target, "${path}_$i")
+                if (hit != null) return hit
+            }
+            return null
         }
 
         fun onStableState(snapshot: UiTreeCapture.Snapshot) {
+            val before = lastStableStateId
+            val after = snapshot.stateId
+            lastStableStateId = after
+            val eventSink = pendingEventsSink
+            if (before != null && eventSink != null && pendingEvents.isNotEmpty()) {
+                val drained = mutableListOf<PendingEvent>()
+                while (true) drained += pendingEvents.poll() ?: break
+                for (ev in drained) eventSink(ev, before, after)
+            } else {
+                pendingEvents.clear()
+            }
             stateSink?.invoke(snapshot)
+        }
+
+        @Volatile
+        private var pendingEventsSink: ((PendingEvent, before: String, after: String) -> Unit)? = null
+
+        internal fun setEventsSink(fn: ((PendingEvent, String, String) -> Unit)?) {
+            pendingEventsSink = fn
         }
 
         /**
@@ -142,6 +227,20 @@ class CaptureCoordinator(
             )
             emitCaptureProgress(session.id, session.packageName)
         }
+        // Sink classified raw events into Room with the correct
+        // beforeStateId / afterStateId bracket.
+        setEventsSink { pending, before, after ->
+            repo.appendClassifiedEvent(
+                sessionId = session.id,
+                action = pending.action,
+                label = pending.label,
+                nodeId = pending.nodeId,
+                input = pending.input,
+                beforeStateId = before,
+                afterStateId = after,
+                at = pending.at,
+            )
+        }
         launchDemoShop(session.packageName)
         val out = com.facebook.react.bridge.Arguments.createMap()
         out.putString("sessionId", session.id)
@@ -191,6 +290,7 @@ class CaptureCoordinator(
         activePackage.set(null)
         activeSession.set(null)
         stateSink = null
+        setEventsSink(null)
         com.techphantoms.pocketqa.OperationLock.release(
             com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, sessionId
         )
@@ -203,6 +303,7 @@ class CaptureCoordinator(
         activePackage.set(null)
         activeSession.set(null)
         stateSink = null
+        setEventsSink(null)
         com.techphantoms.pocketqa.OperationLock.release(
             com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, sessionId
         )

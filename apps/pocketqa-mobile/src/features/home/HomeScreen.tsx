@@ -54,6 +54,9 @@ export function HomeScreen({ navigation }: ScreenProps<"Home">) {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => navigation.navigate("ReplayMissionControl", { testId: item.id, version: item.version })}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open test ${item.name}, version ${item.version}`}
+                  accessibilityHint="Replays the approved test against the target app."
                 >
                   <Card>
                     <View style={styles.rowBetween}>
@@ -77,7 +80,12 @@ export function HomeScreen({ navigation }: ScreenProps<"Home">) {
         )}
 
         <Text style={typography.eyebrow}>Explore</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("AgentLab")}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate("AgentLab")}
+          accessibilityRole="button"
+          accessibilityLabel="Agent Lab"
+          accessibilityHint="Bounded exploration mission with proposal review."
+        >
           <Card tone="info">
             <View style={styles.rowBetween}>
               <View style={{ flex: 1 }}>

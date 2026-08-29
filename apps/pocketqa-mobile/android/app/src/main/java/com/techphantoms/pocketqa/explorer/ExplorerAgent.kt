@@ -143,10 +143,9 @@ class ExplorerAgent(
             put("events", JsonArray(events))
             if (proposal != null) put("proposal", proposal!!)
         }
-        // Persist the summary onto the mission row.
-        repo.mission(missionId) // no-op read to keep API surface consistent
-        // (repo.mission returns a WritableMap; the summary write is issued via
-        //  createMission's persistence path — extend if you need re-load)
+        // Persist the summary so a subsequent getMission() call after
+        // MISSION_FINISHED can return the events + proposal.
+        repo.writeMissionSummary(missionId, summary.toString())
         emitFinished(missionId, summary)
         OperationLock.release(OperationLock.Kind.MISSION, missionId)
         stopSignals.remove(missionId)

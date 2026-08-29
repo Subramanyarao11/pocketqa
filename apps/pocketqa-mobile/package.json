@@ -39,6 +39,8 @@
     "@react-native/eslint-config": "0.75.4",
     "@react-native/metro-config": "0.75.4",
     "@react-native/typescript-config": "0.75.4",
+    "@testing-library/jest-native": "^5.4.3",
+    "@testing-library/react-native": "^12.5.3",
     "@types/jest": "^29.5.13",
     "@types/react": "^18.3.12",
     "@types/react-test-renderer": "^18.3.0",
@@ -51,5 +53,13 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "codegenConfig": {
+    "name": "PocketQaSpec",
+    "type": "modules",
+    "jsSrcsDir": "src/native",
+    "android": {
+      "javaPackageName": "com.techphantoms.pocketqa.spec"
+    }
   }
 }

@@ -38,6 +38,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     private val db = PocketQaDatabase.get(ctx)
     private val dao get() = db.dao()
     private val prefs = ctx.getSharedPreferences("pocketqa.settings", 0)
+    private val vault = CredentialVault(ctx)
     private val allowlist = listOf("com.techphantoms.pocketqa.demoshop")
 
     data class Session(val id: String, val packageName: String)
@@ -132,6 +133,38 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             payload = payload,
         ))
         dao.incrementSessionStepCount(sessionId, System.currentTimeMillis())
+    }
+
+    /**
+     * Persist a raw event that has already been classified into the schema
+     * shape (see CaptureCoordinator.classify).  Used only by the real capture
+     * pipeline; simulation goes through [appendSimulatedEvent].
+     */
+    fun appendClassifiedEvent(
+        sessionId: String,
+        action: String,
+        label: String,
+        nodeId: String?,
+        input: String?,
+        beforeStateId: String,
+        afterStateId: String,
+        at: Long,
+    ) = runBlocking {
+        val payload = buildJsonObject {
+            put("action", JsonPrimitive(action))
+            put("label", JsonPrimitive(label))
+            if (nodeId != null) put("nodeId", JsonPrimitive(nodeId))
+            if (input != null) put("input", JsonPrimitive(input))
+            put("beforeStateId", JsonPrimitive(beforeStateId))
+            put("afterStateId", JsonPrimitive(afterStateId))
+        }
+        dao.insertCaptureEvent(CaptureEventRow(
+            id = "evt_" + UUID.randomUUID().toString().take(8),
+            sessionId = sessionId,
+            at = at,
+            payload = payload.toString(),
+        ))
+        dao.incrementSessionStepCount(sessionId, at)
     }
 
     fun pauseSession(id: String) = runBlocking {
@@ -267,6 +300,12 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             createdAt = System.currentTimeMillis(),
         ))
         JsonBridge.toWritableMap(payload)
+    }
+
+    /** Persist a mission summary (events + optional proposal) alongside the mission row. */
+    fun writeMissionSummary(missionId: String, summaryPayload: String) = runBlocking {
+        val row = dao.mission(missionId) ?: return@runBlocking
+        dao.upsertMission(row.copy(summaryPayload = summaryPayload))
     }
 
     fun mission(id: String): WritableMap = runBlocking {
@@ -424,12 +463,13 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     fun saveProvider(input: ReadableMap): WritableMap = runBlocking {
         val provider = input.getString("provider") ?: error("provider required")
         val key = input.getString("key") ?: error("key required")
-        val masked = "••••" + key.takeLast(4).uppercase()
-        // NB: this scaffold stores an obfuscated form only; production wraps
-        // `key.toByteArray()` with EncryptedSharedPreferences / MasterKey.
-        val obfuscated = key.toByteArray().map { (it.toInt() xor 0x5A).toByte() }.toByteArray()
+        // Store the plaintext in the AndroidKeyStore-backed vault; keep only
+        // a masked view in Room so the readiness query can render the pill
+        // without ever loading the secret. See CredentialVault.kt.
+        val masked = vault.store(provider, key)
         dao.upsertProvider(ProviderRow(
-            provider = provider, maskedKey = masked, encryptedKey = obfuscated,
+            provider = provider, maskedKey = masked,
+            encryptedKey = null, // ciphertext lives in EncryptedSharedPreferences
             updatedAt = System.currentTimeMillis(),
         ))
         val out = Arguments.createMap()
@@ -437,19 +477,31 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         out
     }
 
-    fun deleteProvider(provider: String) = runBlocking { dao.deleteProvider(provider) }
+    fun deleteProvider(provider: String) = runBlocking {
+        vault.delete(provider)
+        dao.deleteProvider(provider)
+    }
     fun deleteSession(id: String) = runBlocking { cancelSession(id, deleteArtifacts = true) }
     fun deleteTest(id: String) = runBlocking { dao.deleteApproved(id) }
     fun deleteAll() = runBlocking {
+        for (p in dao.providers()) vault.delete(p.provider)
         dao.clearConsent(); dao.clearProviders(); dao.clearIntents()
         dao.clearSessions(); dao.clearEvents(); dao.clearStates()
         dao.clearJobs(); dao.clearDrafts(); dao.clearApproved()
         dao.clearRuns(); dao.clearMissions(); dao.clearActiveOp()
     }
 
+    /** Read the plaintext API key for a provider — only the InferenceRouter uses this. */
+    fun providerKey(provider: String): String? = vault.read(provider)
+
     // -- Internal helpers ---------------------------------------------------------
 
-    /** Runs the compile pipeline and persists both the job and the resulting draft. */
+    /**
+     * Runs the compile pipeline and persists the job + resulting draft.
+     * Uses the real `beforeStateId`/`afterStateId` from persisted capture
+     * events, and ranks a selector against the observed state so Review can
+     * open Selector candidates for every step.
+     */
     fun compileFromSession(sessionId: String, engine: String): String = runBlocking {
         val session = dao.session(sessionId) ?: error("session not found")
         val intent = dao.intent(session.intentId)?.let {
@@ -462,16 +514,28 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         val draftId = "draft_" + UUID.randomUUID().toString().take(8)
         val steps = buildJsonArray {
             for ((i, ev) in events.withIndex()) {
+                val beforeStateId = ev["beforeStateId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val afterStateId = ev["afterStateId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val targetNodeId = ev["nodeId"]?.jsonPrimitive?.contentOrNull
+                val beforeState = beforeStateId
+                    .takeIf { it.isNotEmpty() }
+                    ?.let { dao.uiState(it) }
+                    ?.let { JsonBridge.json.parseToJsonElement(it.payload).jsonObject }
+                val targetNode = beforeState?.get("nodes")?.jsonArray
+                    ?.map { it.jsonObject }
+                    ?.firstOrNull { it["nodeId"]?.jsonPrimitive?.contentOrNull == targetNodeId }
+
                 add(buildJsonObject {
                     put("id", JsonPrimitive("step_$i"))
                     put("order", JsonPrimitive(i))
                     put("action", ev["action"] ?: JsonPrimitive("tap"))
-                    put("label", ev["label"] ?: JsonPrimitive("Step ${i + 1}"))
+                    put("label", JsonPrimitive(deriveLabel(ev, targetNode)))
                     ev["input"]?.let { put("input", it) }
+                    if (targetNode != null) put("selector", rankSelector(targetNode, beforeState))
                     put("assertions", JsonArray(emptyList()))
-                    put("beforeStateId", JsonPrimitive("s_before_$i"))
-                    put("afterStateId", JsonPrimitive("s_after_$i"))
-                    put("needsHumanCorrection", JsonPrimitive(false))
+                    put("beforeStateId", JsonPrimitive(beforeStateId))
+                    put("afterStateId", JsonPrimitive(afterStateId))
+                    put("needsHumanCorrection", JsonPrimitive(targetNode == null))
                 })
             }
         }
@@ -504,6 +568,78 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         ))
         dao.clearActiveOp()
         jobId
+    }
+
+    /** Fluent step label — mirrors describeAction() in src/domain/compiler.ts. */
+    private fun deriveLabel(ev: JsonObject, target: JsonObject?): String {
+        val text = target?.get("text")?.jsonPrimitive?.contentOrNull
+            ?: target?.get("contentDescription")?.jsonPrimitive?.contentOrNull
+        val input = ev["input"]?.jsonPrimitive?.contentOrNull
+        return when (ev["action"]?.jsonPrimitive?.contentOrNull) {
+            "tap"       -> if (text != null) "Tap \"$text\"" else "Tap element"
+            "longPress" -> if (text != null) "Long-press \"$text\"" else "Long-press element"
+            "typeText"  -> if (text != null) "Type \"${input ?: ""}\" into \"$text\"" else "Type \"${input ?: ""}\""
+            "clearText" -> "Clear text input"
+            "back"      -> "Navigate back"
+            "scroll"    -> "Scroll"
+            "wait"      -> "Wait for UI to settle"
+            "launch"    -> "Launch target app"
+            else        -> "Unrecognised action — please review"
+        }
+    }
+
+    /** Deterministic selector ranker — mirrors src/domain/selectors.ts. */
+    private fun rankSelector(node: JsonObject, state: JsonObject?): JsonObject {
+        val candidates = mutableListOf<JsonObject>()
+        fun push(strategy: String, value: String, confidence: Double, reason: String) {
+            candidates += buildJsonObject {
+                put("strategy", JsonPrimitive(strategy))
+                put("value", JsonPrimitive(value))
+                node["role"]?.let { put("role", it) }
+                put("confidence", JsonPrimitive(confidence))
+                put("reason", JsonPrimitive(reason))
+            }
+        }
+        val nodes = state?.get("nodes")?.jsonArray?.map { it.jsonObject } ?: emptyList()
+        val testId = node["testId"]?.jsonPrimitive?.contentOrNull
+        if (!testId.isNullOrEmpty()) push("testId", testId, 0.98, "Explicit testId \"$testId\" is the most stable anchor.")
+        val resourceId = node["resourceId"]?.jsonPrimitive?.contentOrNull
+        if (!resourceId.isNullOrEmpty()) push("resourceId", resourceId, 0.94, "Resource ID \"$resourceId\" is emitted by the app build.")
+        val cd = node["contentDescription"]?.jsonPrimitive?.contentOrNull
+        if (!cd.isNullOrEmpty()) {
+            val dupes = nodes.count { it["contentDescription"]?.jsonPrimitive?.contentOrNull == cd }
+            push("accessibilityLabel", cd, if (dupes == 1) 0.9 else 0.65,
+                if (dupes == 1) "Accessibility label uniquely identifies this ${node["role"]?.jsonPrimitive?.contentOrNull.orEmpty()}."
+                else "Accessibility label matches $dupes nodes; disambiguation added.")
+        }
+        val text = node["text"]?.jsonPrimitive?.contentOrNull
+        if (!text.isNullOrEmpty()) {
+            val role = node["role"]?.jsonPrimitive?.contentOrNull
+            val dupes = nodes.count {
+                it["text"]?.jsonPrimitive?.contentOrNull == text &&
+                    it["role"]?.jsonPrimitive?.contentOrNull == role
+            }
+            push("textAndRole", text, if (dupes == 1) 0.82 else 0.55,
+                if (dupes == 1) "Visible \"$text\" $role appears exactly once."
+                else "Visible text matches $dupes ${role}s — brittle.")
+        }
+        candidates.sortByDescending {
+            it["confidence"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+        }
+        val primary = candidates.firstOrNull() ?: buildJsonObject {
+            put("strategy", JsonPrimitive("textAndRole"))
+            put("value", node["role"] ?: JsonPrimitive(""))
+            put("confidence", JsonPrimitive(0.1))
+            put("reason", JsonPrimitive("No stable anchor available."))
+        }
+        val fallbacks = candidates.drop(1).take(2).filter {
+            it["strategy"]?.jsonPrimitive?.contentOrNull != "coordinates"
+        }
+        return buildJsonObject {
+            put("primary", primary)
+            put("fallbacks", JsonArray(fallbacks))
+            put("candidateCount", JsonPrimitive(candidates.size))
+        }
     }
 
     fun getCompileJob(jobId: String): WritableMap = runBlocking {

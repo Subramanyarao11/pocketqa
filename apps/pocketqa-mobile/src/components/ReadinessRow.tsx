@@ -20,7 +20,12 @@ const map = {
 export function ReadinessRow({ label, status, detail, action }: ReadinessRowProps) {
   const { tone, copy } = map[status];
   return (
-    <View style={styles.row}>
+    <View
+      style={styles.row}
+      accessible
+      accessibilityRole="summary"
+      accessibilityLabel={`${label}, ${copy}. ${detail}`}
+    >
       <View style={{ flex: 1, minWidth: 0 }}>
         <View style={styles.headline}>
           <Text style={typography.h2}>{label}</Text>

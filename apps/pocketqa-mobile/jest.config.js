@@ -1,6 +1,5 @@
 module.exports = {
   preset: "react-native",
-  testEnvironment: "node",
   moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
   transform: {
     "^.+\\.(ts|tsx|js|jsx)$": [
@@ -12,7 +11,7 @@ module.exports = {
     ],
   },
   transformIgnorePatterns: [
-    "node_modules/(?!(react-native|@react-native|@react-navigation)/)",
+    "node_modules/(?!(react-native|@react-native|@react-navigation|yaml)/)",
   ],
   moduleNameMapper: {
     "^@app/(.*)$": "<rootDir>/src/app/$1",

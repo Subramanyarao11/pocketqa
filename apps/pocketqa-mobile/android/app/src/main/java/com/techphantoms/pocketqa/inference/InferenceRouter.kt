@@ -34,15 +34,22 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
     }
 
     /**
-     * Detect the on-device Prompt API at runtime. We look up the ML Kit GenAI
-     * class by reflection so the deterministic path still compiles on devices
-     * without the module installed (Play Services / ML Kit will lazy-download).
+     * Detect the on-device Prompt API at runtime.  We probe several class
+     * names because the ML Kit GenAI module is in alpha and the concrete
+     * entry point has moved across releases.  As long as any candidate is
+     * present, we prefer on-device inference; otherwise we stay deterministic.
      */
+    private val ONDEVICE_GENAI_CLASSES = listOf(
+        "com.google.mlkit.genai.chat.OnDeviceChat",
+        "com.google.mlkit.genai.prompt.OnDevicePrompt",
+        "com.google.mlkit.genai.common.OnDeviceGenAi",
+        "com.google.mlkit.genai.common.GenAi",
+    )
+
     fun currentEngine(): Engine {
-        val onDevice = try {
-            Class.forName("com.google.mlkit.genai.common.GenAi")
-            true
-        } catch (_: Throwable) { false }
+        val onDevice = ONDEVICE_GENAI_CLASSES.any { name ->
+            try { Class.forName(name); true } catch (_: Throwable) { false }
+        }
         return if (onDevice) Engine.ON_DEVICE_AI else Engine.DETERMINISTIC_LOCAL
     }
 
@@ -131,17 +138,20 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
         // ML Kit alpha on the classpath. If any step fails we return null,
         // which the caller interprets as "use the deterministic ordering".
         return try {
-            val genaiClass = Class.forName("com.google.mlkit.genai.common.GenAi")
-            val generateChatMethod = genaiClass.methods.firstOrNull { it.name.startsWith("generateChat") }
-                ?: return null
-            val result = generateChatMethod.invoke(null, prompt) as? String ?: return null
+            val genaiClass = ONDEVICE_GENAI_CLASSES.firstNotNullOfOrNull {
+                try { Class.forName(it) } catch (_: Throwable) { null }
+            } ?: return null
+            val generateMethod = genaiClass.methods.firstOrNull { m ->
+                (m.name.startsWith("generate") || m.name.startsWith("prompt")) &&
+                    m.parameterTypes.size == 1 &&
+                    m.parameterTypes[0] == String::class.java
+            } ?: return null
+            val result = generateMethod.invoke(null, prompt) as? String ?: return null
             // Response must be a permutation of the input list; anything else is
             // treated as a fabricated ID and rejected.
             val ordered = result
                 .lines()
-                .mapNotNull { line ->
-                    candidateIds.firstOrNull { it in line }
-                }
+                .mapNotNull { line -> candidateIds.firstOrNull { it in line } }
                 .distinct()
             if (ordered.toSet() != candidateIds.toSet()) null else ordered
         } catch (_: Throwable) { null }

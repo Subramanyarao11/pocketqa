@@ -1,50 +1,57 @@
-import { NativeEventEmitter, NativeModules, Platform } from "react-native";
+import { NativeEventEmitter, Platform } from "react-native";
+import NativePocketQaModule from "./NativePocketQaModule";
 import type { PocketQaEvent, PocketQaNativeApi } from "./types";
 import { createMockPocketQaNative } from "./mock";
 
 /**
  * PocketQaNative — the single façade every feature imports (§11).
  *
- * At runtime we look for the real Kotlin module `PocketQaModule`; if it isn't
- * registered (dev or unit-test) we fall back to a deterministic mock that
- * reuses the shared domain modules.  Features never branch on this.
+ * The Kotlin side is a TurboModule; at runtime we resolve it via
+ * `TurboModuleRegistry.get<Spec>("PocketQaModule")` (see
+ * `./NativePocketQaModule.ts`).  When the module isn't registered — in unit
+ * tests or when the app runs against the JS mock harness — we fall back to a
+ * deterministic mock that reuses the shared domain modules.
+ *
+ * Callers never branch on which path is active.
  */
 
-interface NativeShape {
-  addListener?: (event: string) => void;
+interface EventShape {
+  addListener?: (name: string) => void;
   removeListeners?: (count: number) => void;
   [command: string]: unknown;
 }
 
-const nativeModule = (NativeModules as { PocketQaModule?: NativeShape }).PocketQaModule;
-
-function buildRealFacade(mod: NativeShape): PocketQaNativeApi {
-  const emitter = new NativeEventEmitter(mod as never);
-  const call = <T = unknown>(name: string, arg?: unknown) =>
-    Promise.resolve((mod[name] as ((a?: unknown) => Promise<T>) | undefined)?.(arg) as Promise<T>);
-
+function buildRealFacade(mod: NonNullable<typeof NativePocketQaModule>): PocketQaNativeApi {
+  const emitter = new NativeEventEmitter(mod as unknown as EventShape as never);
   const listener = (cb: (e: PocketQaEvent) => void) => {
     const sub = emitter.addListener("PocketQaEvent", cb);
     return () => sub.remove();
   };
 
+  // Every method on the TurboModule spec returns a Promise. We proxy through
+  // to keep the JS surface identical to the mock — `PocketQaNative.doThing()`
+  // works whether `doThing` is a Kotlin method or a mock function.
   return new Proxy({} as PocketQaNativeApi, {
     get(_target, prop: string) {
       if (prop === "addListener") return listener;
-      return (arg?: unknown) => call(prop, arg);
+      const fn = (mod as unknown as Record<string, unknown>)[prop];
+      if (typeof fn === "function") {
+        return (...args: unknown[]) => (fn as (...a: unknown[]) => unknown).apply(mod, args);
+      }
+      return undefined;
     },
   });
 }
 
-const impl: PocketQaNativeApi = nativeModule
-  ? buildRealFacade(nativeModule)
+const impl: PocketQaNativeApi = NativePocketQaModule
+  ? buildRealFacade(NativePocketQaModule)
   : createMockPocketQaNative();
 
-if (!nativeModule && Platform.OS !== "web") {
+if (!NativePocketQaModule && Platform.OS !== "web") {
   // eslint-disable-next-line no-console
   console.warn(
-    "[PocketQA] Native PocketQaModule not linked — using deterministic mock. " +
-      "Build android/app to enable device-backed capture and replay."
+    "[PocketQA] TurboModule PocketQaModule not linked — using deterministic mock. " +
+      "Build android/app with newArchEnabled=true to enable device-backed capture and replay."
   );
 }
 
