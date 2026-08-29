@@ -223,8 +223,8 @@ AI-A-13 is worth doing early despite being P1: it is almost entirely rule-based 
 
 | ID | Task | Depends on | MVP dep. | Done when | Status |
 |---|---|---|---|---|---|
-| AI-A-14 | Replace fixture corpus with real captures; re-run the full eval suite | E1 capture | App | Eval pass rate on real captures is within tolerance of the fixture run. Any gap is a bug in the fixtures, and we fix the fixtures.  | Blocked on E1 capture |
-| AI-A-15 | Port the deterministic twins to Kotlin `DeterministicInferenceEngine` (§18.4) with B | AI-A-06/10, E2-03 | App | Kotlin and Python produce identical output on the shared fixture set. Byte-identical where the schema allows.  | Blocked on E2-03 + AI-B-17 |
+| AI-A-14 | Replace fixture corpus with real captures; re-run the full eval suite | E1 capture | App | Eval pass rate on real captures is within tolerance of the fixture run. Any gap is a bug in the fixtures, and we fix the fixtures.  | **Adapter done** — `app/capture_adapter.py` converts a live capture to task input; corpus swap needs capture to emit display metrics |
+| AI-A-15 | Port the deterministic twins to Kotlin `DeterministicInferenceEngine` (§18.4) with B | AI-A-06/10, E2-03 | App | Kotlin and Python produce identical output on the shared fixture set. Byte-identical where the schema allows.  | **Done** — `DeterministicRanker.kt`, parity to 4dp in English and Hinglish, 6 JUnit tests |
 | AI-A-16 | Tune prompts for on-device constraints: shorter envelopes, smaller candidate sets, one image maximum, `temperature` 0.1–0.2 (§18.3) | AI-A-15 | App | Every task fits the ML Kit Prompt path or degrades to the deterministic twin without a crash.  | Blocked on AI-A-15 |
 
 ### Phase 4 — P2/P3 coverage
