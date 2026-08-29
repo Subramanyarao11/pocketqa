@@ -1,12 +1,33 @@
 {
-  "extends": "@react-native/typescript-config",
+  "extends": "@react-native/typescript-config/tsconfig.json",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": ".",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "resolveJsonModule": true,
+    "jsx": "react-native",
+    "moduleResolution": "bundler",
+    "customConditions": ["react-native"],
+    "baseUrl": "./src",
     "paths": {
-      "@/*": ["src/*"]
+      "@app/*": ["app/*"],
+      "@components": ["components/index.ts"],
+      "@components/*": ["components/*"],
+      "@domain": ["domain/index.ts"],
+      "@domain/*": ["domain/*"],
+      "@features/*": ["features/*"],
+      "@native": ["native/index.ts"],
+      "@native/*": ["native/*"],
+      "@navigation": ["navigation/index.ts"],
+      "@navigation/*": ["navigation/*"],
+      "@services/*": ["services/*"],
+      "@store": ["store/index.ts"],
+      "@store/*": ["store/*"],
+      "@theme": ["theme/index.ts"],
+      "@theme/*": ["theme/*"],
+      "@utils/*": ["utils/*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx"],
-  "exclude": ["**/node_modules", "**/Pods"]
+  "include": ["src", "index.js"],
+  "exclude": ["node_modules", "android", "ios"]
 }

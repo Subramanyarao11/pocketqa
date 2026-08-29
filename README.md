@@ -8,9 +8,22 @@ This repository is the shared source of truth for the Tech Phantoms iQOO hackath
 
 ## Current status
 
-**Selected for the hackathon — implementation starting.**
+**Selected for the hackathon — implementation in progress.**
 
-The repository currently contains the submitted deck, product requirements, technical architecture, AI backlog, demo script, and a macOS onboarding guide. Application source code will be added following the architecture and implementation epics in the technical specification.
+An interactive web prototype of the trusted authoring loop is available in
+[`apps/pocketqa-web`](apps/pocketqa-web). It demonstrates every P0 requirement
+from the PRD — intent, capture, deterministic compilation, review, replay,
+evidence, Maestro export, airplane mode, and a bounded Explorer Lab mission —
+against an embedded **PocketQA Demo Shop** target app.
+
+```bash
+cd apps/pocketqa-web
+npm install
+npm run dev   # opens http://localhost:5173
+```
+
+The React Native + Kotlin mobile build follows the same schemas and pure
+modules that drive the prototype; see `apps/pocketqa-web/src/lib/`.
 
 ## Start here
 
