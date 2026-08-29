@@ -36,6 +36,8 @@ New contributors should read these in order:
 5. [Agentic AI Backlog](PocketQA_Agentic_AI_Backlog.md)
 6. [AI Track A — Reasoning, Prompts and Evaluation](PocketQA_AI_Track_A_Reasoning.md)
 7. [AI Track B — Platform, Data and Integration](PocketQA_AI_Track_B_Platform.md)
+8. [AI engine handoff (AI-B-02)](PocketQA_AI_Engine_Handoff.md)
+9. [Capture findings and interaction-inference design](PocketQA_Capture_Findings_and_Inference_Design.md)
 
 Hackathon and pitch material:
 
