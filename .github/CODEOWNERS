@@ -1,0 +1,15 @@
+# Default owner until module-specific owners are added.
+* @Subramanyarao11
+
+# Safety-critical product and engineering sources of truth.
+/PocketQA_PRD.md @Subramanyarao11
+/PocketQA_Technical_Spec.md @Subramanyarao11
+/PocketQA_Agentic_AI_Backlog.md @Subramanyarao11
+/.github/ @Subramanyarao11
+
+# Add module owners when source folders are created:
+# /apps/pocketqa-mobile/android/**/capture/ @Subramanyarao11
+# /apps/pocketqa-mobile/android/**/execution/ @Subramanyarao11
+# /apps/pocketqa-mobile/android/**/policy/ @Subramanyarao11
+# /apps/pocketqa-mobile/android/**/redaction/ @Subramanyarao11
+# /packages/schemas/ @Subramanyarao11

@@ -1,0 +1,63 @@
+name: Feature or implementation task
+description: Propose a scoped PocketQA capability or take a technical-spec work item.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What useful product or engineering outcome should exist when this is done?
+      placeholder: A developer can...
+    validations:
+      required: true
+  - type: input
+    id: requirement
+    attributes:
+      label: PRD requirement / technical-spec item
+      placeholder: FR-CAP-002 or E1-03
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: List the smallest implementation steps included in this issue.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: |
+        - Given...
+        - When...
+        - Then...
+    validations:
+      required: true
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: Areas touched
+      options:
+        - label: React Native UI
+        - label: Demo Shop
+        - label: Android native capture/execution
+        - label: Schema/native bridge
+        - label: Policy/redaction/security
+        - label: AI/provider integration
+        - label: Tests/fixtures
+        - label: Documentation
+  - type: textarea
+    id: risks
+    attributes:
+      label: Risks and dependencies
+      description: Note device, model, safety, privacy, network, or cross-team dependencies.
+  - type: checkboxes
+    id: hygiene
+    attributes:
+      label: Submission check
+      options:
+        - label: This issue contains no secret, personal data, raw capture, or private screenshot.
+          required: true

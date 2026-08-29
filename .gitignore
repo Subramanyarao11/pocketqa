@@ -1,0 +1,81 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Editors and IDEs
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# JavaScript / React Native
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.metro-health-check*
+.eslintcache
+coverage/
+dist/
+.turbo/
+
+# React Native bundles and maps
+*.jsbundle
+*.map
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+**/build/
+android/local.properties
+local.properties
+captures/
+.cxx/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.class
+*.hprof
+
+# Signing and credentials
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+*.mobileprovision
+keystore.properties
+secrets.properties
+service-account*.json
+
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+*.local
+local-config.json
+
+# PocketQA private/runtime artifacts
+screenshots-raw/
+raw-captures/
+evidence-private/
+provider-credentials/
+*.evidence.zip
+*.support.zip
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.partial
+*.log
+
+# Tool caches
+.kotlin/
+.konan/
+.maestro/tests/

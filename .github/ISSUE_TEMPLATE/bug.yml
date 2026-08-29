@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible PocketQA or Demo Shop problem without private data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What happened, and what should have happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Reset fixture...
+        2. Start capture...
+        3. Tap...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Safe environment details
+      description: Commit, build variant, device/emulator, Android version, local/connected mode.
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      options:
+        - Blocks demo or unsafe action risk
+        - Blocks core authoring/replay
+        - Feature broken with workaround
+        - Visual or minor issue
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Include safe error codes or redacted screenshots/logs only.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: No credential, personal data, raw capture, OTP, or private device serial is included.
+          required: true
+        - label: I stopped testing if the issue could dispatch an unsafe or unintended action.
+          required: true
