@@ -38,11 +38,19 @@ async def test_deterministic_always_ready(client: AsyncClient):
 
 
 async def test_openai_unavailable_without_key(client: AsyncClient):
-    from pydantic import SecretStr
+    from app.config import Settings
 
-    with patch("app.main.settings") as mock_settings:
-        mock_settings.openai_api_key = SecretStr("")
-        mock_settings.pocketqa_llm_model = ""
+    no_key = Settings(
+        api_key=None,
+        ceiling_model="test",
+        device_proxy_model="test",
+        base_url="http://test",
+        timeout_ms=5000,
+        max_retries=1,
+        max_output_tokens=1024,
+        response_mode="auto",
+    )
+    with patch("app.main.load_settings", return_value=no_key):
         resp = await client.get("/health")
         data = resp.json()
         assert data["engines"]["openai"] == "UNAVAILABLE"
