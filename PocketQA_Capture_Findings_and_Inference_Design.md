@@ -482,11 +482,133 @@ method above is most of the answer, with three caveats:
 
 ---
 
+## Part 5 — What the implementation established (2026-08-30)
+
+The loop now completes on device: five demonstrated interactions captured,
+compiled, approved, replayed and asserted — `PASS`, 5 steps, 16.1s,
+`deterministic-local`, no network. What follows is what the work actually
+taught us, because most of it contradicts what Part 2 assumed.
+
+### 5.1 Screen identity cannot come from the accessibility event
+
+`screenName` was the event's class name. On a single-Activity Compose app that
+is `View` or `ViewGroup` on *every* screen. So `screenChanged` was always
+`false`, which silenced the destination signal (§2.5 signal 4) *and* made the
+scroll guard discard every real navigation — the guard drops a transition with
+`distance > 0.9 && !screenChanged`, and navigation is exactly that. The single
+most important signal in the design could never fire.
+
+Screen identity is now structural, and the second attempt at it matters more
+than the first. Hashing the tree's anchors worked for navigation but also
+changed when a discount row appeared on the cart — new content on the same
+screen read as a new screen, and a control could then "name the destination"
+after itself. The rule that holds:
+
+> You have navigated when **most of the ids that identified the previous screen
+> are gone.** Arrivals cannot distinguish a new screen from new content;
+> departures can.
+
+### 5.2 A fingerprint must not contain the label it is used to compare
+
+`nodeFingerprint` folded the label in. So a button that reacted to being
+pressed — `Add` → `Added`, the single clearest evidence of which control was
+touched — appeared as one node *removed* and a different node *added*. The
+self-mutation signal (§2.5 signal 3) could never fire on the case it was
+written for. A node carrying a stable id is now identified by that id alone.
+
+### 5.3 Compose buttons have no text; the label lives in a child
+
+`add_to_cart_1` is a `button` with `text=null`. "Add" is a child `Text` node.
+Every label-based rule saw an empty string: steps compiled as "Tap element",
+`textAndRole` candidates were empty, and signal 4 had nothing to match. Nodes
+now inherit the accessible name their subtree implies, bounded to two levels
+and two text nodes — which is what the platform itself announces.
+
+### 5.4 A tap that changes nothing is not inferable by anyone
+
+The three product-list states either side of an "Add to cart" were **identical
+in content** — same 45 nodes, same signature, unchanged cart button. Demo Shop
+gave no feedback on the control that was pressed and no badge anywhere else.
+
+This is a limit worth stating plainly, because no algorithm removes it:
+
+> **PocketQA can only capture an interaction that changes the accessibility
+> tree.** A control whose effect is invisible is invisible to any capture tool
+> that does not instrument the app under test.
+
+The fix was in the target app, and it was a real defect rather than a
+concession: a shop where adding to cart shows nothing is a broken shop. The
+cart button now shows its count and both buttons confirm their state. That is
+also precisely what a regression test needs to assert on.
+
+### 5.5 The touch API is the right primitive and this device will not deliver it
+
+From Android 14 an accessibility service can observe touchscreen motion events
+(`onMotionEvent` + `FLAG_SEND_MOTION_EVENTS` + `setMotionEventSources`) without
+enabling touch exploration — input is not intercepted, the target app receives
+every gesture unchanged. Hit-testing the tap against the tree makes attribution
+a lookup rather than an inference.
+
+It is implemented, guarded by API level, and scored ahead of the scroll guard —
+but only for a gesture confirmed to be a tap (displacement within the platform
+touch slop, under 600ms), because a fling also starts with a finger going down
+and would otherwise blame a screen of churn on wherever it started.
+
+On the vivo test device it never fires: `dumpsys accessibility` reports
+`A11yInputFilter … Enabled features of Display [0] = []`, so no motion events
+reach any service. The diff signals remain load-bearing. Treat the touch route
+as an accelerator on devices that grant it, never as the plan.
+
+### 5.6 Attribution confidence measured on the real flow
+
+| Step | Target | Confidence | Deciding signals |
+|---|---|---|---|
+| Tap Add | `add_to_cart_1` | 1.00 | changed its own state; platform reported the change |
+| Tap Cart | `cart_button` | 1.00 | destination names "Cart (1)"; disappeared; clickable on origin |
+| Tap coupon field | `coupon_input` | 0.65 | received accessibility focus; platform reported the change |
+| Type SAVE20 | `coupon_input` | 1.00 | platform event — never inferred |
+| Tap Apply | `apply_coupon_button` | 0.55 | changed its own state |
+
+Two steps land in the review band and are flagged for a human. That is the
+design working: the alternative is a confident wrong answer, which produces a
+green test that asserts nothing.
+
+### 5.7 Replay had to own its starting conditions
+
+The launch intent resumed whatever task the app already had, so a run inherited
+the screen the demonstration left behind and step 1 resolved against the wrong
+state — reported, misleadingly, as selector drift. Replay now starts the target
+at its root, waits for it to actually reach the foreground rather than sleeping
+300ms, waits for the tree to settle instead of a fixed 120ms, and reports
+`TARGET_LOST_FOREGROUND` plainly when the app goes away.
+
+### 5.8 Two ways the product lied about what it knew
+
+Both produced confident output with nothing behind it, which is the failure
+mode this design exists to prevent:
+
+- A step with no resolvable target **fabricated** a `textAndRole` selector out
+  of the role name — `textAndRole = textField`, which cannot match anything.
+  Now recorded as needing correction.
+- The JSON bridge coerced string values that looked numeric, so a captured
+  `"7.0"` was compared as a number and never matched.
+
+### 5.9 Still open after this run
+
+- **Step labels are still "Tap element"** in the review UI even though
+  attribution now knows the control is called "Cart". Cosmetic, one field.
+- **A 0-step session cannot be finished** — `Finish` is a no-op and the session
+  stays wedged in `RECORDING`; only `pm clear` recovers it.
+- **The target app must be tapped explicitly**; the single-match auto-select
+  sets the package but does not enable `Continue`.
+- Maestro export and the Explorer mission are still unexercised on device.
+
+---
+
 ## Part 4 — What is still open
 
-- **Approve is unreachable** until inference lands, so replay, evidence and
-  Maestro export remain unverified on device. They are implemented; they have
-  never run.
+- ~~**Approve is unreachable** until inference lands~~ — resolved; the full loop
+  now runs on device (Part 5).
 - **The `Needs correction` control navigates nowhere.** Even with a good selector
   candidate list there is no way for a human to apply it. `CAP-08`.
 - **The mock harness cannot produce approvable steps.** `appendSimulatedEvent`
