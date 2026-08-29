@@ -79,3 +79,9 @@ temp/
 .kotlin/
 .konan/
 .maestro/tests/
+
+# AI lab
+services/ai-lab/.venv/
+services/ai-lab/.env
+services/ai-lab/**/__pycache__/
+.pytest_cache/

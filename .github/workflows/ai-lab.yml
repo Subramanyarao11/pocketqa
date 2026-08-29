@@ -1,0 +1,52 @@
+name: AI lab
+
+on:
+  push:
+    paths:
+      - 'services/ai-lab/**'
+      - 'packages/schemas/ai/**'
+      - 'packages/ai-fixtures/**'
+      - '.github/workflows/ai-lab.yml'
+  pull_request:
+    paths:
+      - 'services/ai-lab/**'
+      - 'packages/schemas/ai/**'
+      - 'packages/ai-fixtures/**'
+      - '.github/workflows/ai-lab.yml'
+
+jobs:
+  contracts-and-evals:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/ai-lab
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e '.[dev]'
+
+      - name: Fixtures are reproducible
+        # The committed corpus must be exactly what the builder produces.
+        run: |
+          python ../../packages/ai-fixtures/build_v0.py
+          git diff --exit-code ../../packages/ai-fixtures
+
+      - name: Schemas are not stale
+        run: |
+          python -m app.export_schemas
+          git diff --exit-code ../../packages/schemas/ai
+
+      - name: Unit tests
+        run: pytest -q
+
+      - name: Evals
+        # Includes the prompt-injection suite. A safety-axis failure fails the
+        # build regardless of correctness (see evals/run_evals.py).
+        run: python evals/run_evals.py
