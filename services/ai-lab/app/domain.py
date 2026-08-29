@@ -13,7 +13,7 @@ from enum import StrEnum
 
 from pydantic import Field
 
-from app.tasks.base import Contract
+from app.contracts import Contract
 
 
 class UiRole(StrEnum):

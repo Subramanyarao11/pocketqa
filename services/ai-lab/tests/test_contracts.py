@@ -250,3 +250,30 @@ def test_committed_schemas_keep_defs_for_typed_consumers():
     generated = build()
     blob = json.dumps(generated["compile_intent.response.json"])
     assert "$defs" in blob, "the committed contract is for Kotlin/TS, not for a model"
+
+
+@pytest.mark.parametrize(
+    "module",
+    ["app.domain", "app.contracts", "app.envelope", "app.merge", "app.relevance",
+     "app.similarity", "app.schema_strict", "app.redaction", "app.config"],
+)
+def test_module_imports_standalone(module):
+    """Each module must import as a program's *first* import.
+
+    `app.domain` did not: it imported `Contract` from `app.tasks.base`, and
+    touching `app.tasks` runs `app/tasks/__init__`, which imports every task,
+    several of which import `app.domain` — a cycle. It only worked because every
+    entry point happened to import `app.tasks` first. A consumer that did not
+    would have hit a partially-initialised module, which is exactly what Track B
+    or the Kotlin-side tooling would do.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c", f"import {module}"],
+        capture_output=True,
+        text=True,
+        cwd=Path(__file__).resolve().parents[1],
+    )
+    assert result.returncode == 0, f"{module} cannot be imported alone:\n{result.stderr}"
