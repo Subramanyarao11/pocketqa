@@ -68,7 +68,9 @@ class PocketQaAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val pkg = latestPackage ?: return
         val screen = latestScreen ?: "screen"
-        val baseline = UiTreeCapture.snapshot(root, pkg, screen, System.currentTimeMillis())
+        val baseline = UiTreeCapture.snapshot(
+            root, pkg, screen, System.currentTimeMillis(), displayMetrics(),
+        )
         // Best-effort screenshot; falls back to no URI if the API is unavailable
         // or a permission dialog covers the target window.
         val screenshot = try {
@@ -78,6 +80,12 @@ class PocketQaAccessibilityService : AccessibilityService() {
             baseline.copy(payload = UiTreeCapture.mergeScreenshotUri(baseline.payload, screenshot.uri))
         } else baseline
         CaptureCoordinator.onStableState(enriched)
+    }
+
+    /** Screen geometry for bounds ratios and dp-based rules (CAP-01). */
+    private fun displayMetrics(): UiTreeCapture.Display {
+        val m = resources.displayMetrics
+        return UiTreeCapture.Display(m.widthPixels, m.heightPixels, m.density)
     }
 
     override fun onInterrupt() { /* required override, no-op */ }

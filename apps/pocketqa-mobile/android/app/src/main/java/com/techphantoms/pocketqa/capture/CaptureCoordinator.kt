@@ -52,9 +52,21 @@ class CaptureCoordinator(
             val nodeId: String?,
             val input: String?,
             val at: Long,
+            /** How the target was determined — CAP-06. `event` means the platform
+             *  told us; `inferred` means we deduced it from the state change. */
+            val method: String = "event",
+            val confidence: Double = 1.0,
+            val signals: List<String> = emptyList(),
+            val alternatives: List<String> = emptyList(),
         )
 
         fun onEvent(event: AccessibilityEvent, root: AccessibilityNodeInfo?) {
+            if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
+                // Not an interaction on its own, but a strong tiebreak for
+                // inference when the platform bothers to send it.
+                lastFocusedNodeId = pathIdFor(root, event.source)
+                return
+            }
             val classified = classify(event, root) ?: return
             pendingEvents += classified
         }
@@ -109,20 +121,66 @@ class CaptureCoordinator(
             return null
         }
 
+        @Volatile
+        private var lastStablePayload: String? = null
+
         fun onStableState(snapshot: UiTreeCapture.Snapshot) {
             val before = lastStableStateId
+            val beforePayload = lastStablePayload
             val after = snapshot.stateId
             lastStableStateId = after
+            lastStablePayload = snapshot.payload
             val eventSink = pendingEventsSink
+
             if (before != null && eventSink != null && pendingEvents.isNotEmpty()) {
                 val drained = mutableListOf<PendingEvent>()
                 while (true) drained += pendingEvents.poll() ?: break
                 for (ev in drained) eventSink(ev, before, after)
+            } else if (before != null && eventSink != null && beforePayload != null) {
+                // CAP-06. Nothing classified, but the screen changed. On a Compose
+                // target that is the normal case, not an exception: taps emit no
+                // TYPE_VIEW_CLICKED at all, so without this every tap is lost and
+                // every compiled step lands with no target.
+                inferInteraction(beforePayload, snapshot.payload)?.let { ev ->
+                    eventSink(ev, before, after)
+                }
             } else {
                 pendingEvents.clear()
             }
             stateSink?.invoke(snapshot)
         }
+
+        /** Attribute a screen change to a control, or decline. */
+        private fun inferInteraction(beforePayload: String, afterPayload: String): PendingEvent? {
+            return try {
+                val json = com.techphantoms.pocketqa.storage.JsonBridge.json
+                val before = json.parseToJsonElement(beforePayload) as? kotlinx.serialization.json.JsonObject
+                    ?: return null
+                val after = json.parseToJsonElement(afterPayload) as? kotlinx.serialization.json.JsonObject
+                    ?: return null
+                val attribution = InteractionInference.infer(before, after, lastFocusedNodeId)
+                    ?: return null
+                // Below REVIEW we still record the step: the operator did something
+                // and a silently missing step is worse than one marked unresolved.
+                // The confidence rides along so review can say how it got here.
+                PendingEvent(
+                    action = "tap",
+                    label = attribution.label,
+                    nodeId = attribution.nodeId,
+                    input = null,
+                    at = System.currentTimeMillis(),
+                    method = "inferred",
+                    confidence = attribution.confidence,
+                    signals = attribution.signals,
+                    alternatives = attribution.alternatives,
+                )
+            } catch (_: Throwable) {
+                null
+            }
+        }
+
+        @Volatile
+        private var lastFocusedNodeId: String? = null
 
         @Volatile
         private var pendingEventsSink: ((PendingEvent, before: String, after: String) -> Unit)? = null
@@ -139,7 +197,11 @@ class CaptureCoordinator(
         fun snapshotNow(packageName: String, screenName: String): UiTreeCapture.Snapshot? {
             val svc = service.get() ?: return null
             val root = svc.rootInActiveWindow ?: return null
-            return UiTreeCapture.snapshot(root, packageName, screenName, System.currentTimeMillis())
+            val m = svc.resources.displayMetrics
+            return UiTreeCapture.snapshot(
+                root, packageName, screenName, System.currentTimeMillis(),
+                UiTreeCapture.Display(m.widthPixels, m.heightPixels, m.density),
+            )
         }
 
         /**
@@ -242,6 +304,10 @@ class CaptureCoordinator(
                 beforeStateId = before,
                 afterStateId = after,
                 at = pending.at,
+                method = pending.method,
+                confidence = pending.confidence,
+                signals = pending.signals,
+                alternatives = pending.alternatives,
             )
         }
         if (!launchDemoShop(session.packageName)) {
@@ -307,6 +373,12 @@ class CaptureCoordinator(
         envelope.putMap("payload", payload)
         ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
             .emit("PocketQaEvent", envelope)
+    }
+
+    /** Push current progress for the active session, if there is one. */
+    fun emitProgressFor(repo: com.techphantoms.pocketqa.storage.PocketQaRepository) {
+        val sessionId = activeSession.get() ?: return
+        emitCaptureProgress(sessionId, activePackage.get() ?: "")
     }
 
     fun pause(sessionId: String) { repo.pauseSession(sessionId) }

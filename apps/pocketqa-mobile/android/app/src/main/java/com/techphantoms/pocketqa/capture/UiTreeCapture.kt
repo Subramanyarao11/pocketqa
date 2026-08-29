@@ -27,7 +27,19 @@ object UiTreeCapture {
 
     data class Snapshot(val stateId: String, val payload: String)
 
-    fun snapshot(root: AccessibilityNodeInfo, packageName: String, screenName: String, capturedAt: Long): Snapshot {
+    /**
+     * Screen geometry, needed to normalise bounds to ratios and to evaluate
+     * dp-based accessibility rules. Absolute pixels alone cannot express either.
+     */
+    data class Display(val widthPx: Int, val heightPx: Int, val density: Float)
+
+    fun snapshot(
+        root: AccessibilityNodeInfo,
+        packageName: String,
+        screenName: String,
+        capturedAt: Long,
+        display: Display? = null,
+    ): Snapshot {
         val nodes = mutableListOf<JsonObject>()
         val ocr = mutableListOf<String>()
         traverse(root, "n", nodes, ocr, depth = 0)
@@ -41,6 +53,11 @@ object UiTreeCapture {
             put("capturedAt", JsonPrimitive(capturedAt))
             put("ocrText", ocrArr)
             put("nodes", nodesArr)
+            if (display != null) put("display", buildJsonObject {
+                put("widthPx", JsonPrimitive(display.widthPx))
+                put("heightPx", JsonPrimitive(display.heightPx))
+                put("density", JsonPrimitive(display.density))
+            })
         }
         return Snapshot(stateId, payload.toString())
     }
@@ -73,6 +90,22 @@ object UiTreeCapture {
             put("enabled", JsonPrimitive(node.isEnabled))
             put("visible", JsonPrimitive(node.isVisibleToUser))
             put("sensitive", JsonPrimitive(sensitive))
+            // CAP-01. Interaction inference scores affordance first: a tap lands
+            // on something tappable. Without these the tree cannot support the
+            // strongest signal in the design, and the accessibility auditor
+            // cannot evaluate touch targets either.
+            put("clickable", JsonPrimitive(node.isClickable))
+            put("longClickable", JsonPrimitive(node.isLongClickable))
+            put("focusable", JsonPrimitive(node.isFocusable))
+            put("checkable", JsonPrimitive(node.isCheckable))
+            if (node.isCheckable) put("checked", JsonPrimitive(node.isChecked))
+            put("selected", JsonPrimitive(node.isSelected))
+            put("scrollable", JsonPrimitive(node.isScrollable))
+            put("editable", JsonPrimitive(node.isEditable))
+            // Path ids (n_0_0_1) shift when a sibling is inserted, so they cannot
+            // match a node across two trees. This is stable under sibling churn:
+            // identity comes from what the node *is*, not where it sits.
+            put("fingerprint", JsonPrimitive(nodeFingerprint(role, text, contentDescription, resourceId, bounds)))
             put("bounds", buildJsonObject {
                 put("x", JsonPrimitive(bounds.left))
                 put("y", JsonPrimitive(bounds.top))
@@ -85,6 +118,29 @@ object UiTreeCapture {
         for (i in 0 until node.childCount) {
             traverse(node.getChild(i), "${pathId}_$i", nodes, ocr, depth + 1)
         }
+    }
+
+    /**
+     * Stable identity for a node across two captures of the same screen.
+     *
+     * Deliberately excludes exact bounds — a row that shifts down when an item is
+     * inserted above it is still the same control — but keeps a coarse position
+     * bucket so two identically-labelled buttons in different places stay
+     * distinct.
+     */
+    private fun nodeFingerprint(
+        role: String,
+        text: String?,
+        contentDescription: String?,
+        resourceId: String?,
+        bounds: Rect,
+    ): String {
+        val label = (text ?: contentDescription ?: "").trim().lowercase()
+        val id = resourceId?.substringAfterLast('/') ?: ""
+        // ~10% buckets: tolerant of layout shift, intolerant of a different slot.
+        val bucketX = if (bounds.width() > 0) bounds.centerX() / 108 else 0
+        val bucketY = if (bounds.height() > 0) bounds.centerY() / 240 else 0
+        return hash("$role|$label|$id|$bucketX,$bucketY").take(12)
     }
 
     private fun extractTestId(node: AccessibilityNodeInfo): String? {
