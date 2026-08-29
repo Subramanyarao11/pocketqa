@@ -20,6 +20,8 @@ New contributors should read these in order:
 2. [Product Requirements Document](PocketQA_PRD.md)
 3. [Technical Specification](PocketQA_Technical_Spec.md)
 4. [Agentic AI Backlog](PocketQA_Agentic_AI_Backlog.md)
+5. [AI Track A — Reasoning, Prompts and Evaluation](PocketQA_AI_Track_A_Reasoning.md)
+6. [AI Track B — Platform, Data and Integration](PocketQA_AI_Track_B_Platform.md)
 
 Hackathon and pitch material:
 
