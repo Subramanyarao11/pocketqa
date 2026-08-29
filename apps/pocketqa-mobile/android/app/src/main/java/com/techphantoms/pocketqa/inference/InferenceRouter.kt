@@ -60,9 +60,36 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
     fun rankCandidates(prompt: String, candidateIds: List<String>): List<String> {
         if (candidateIds.size <= 1) return candidateIds
         return when (currentEngine()) {
+            // The on-device path may only reorder the supplied ids. If it returns
+            // anything else, tryOnDeviceRanking gives back null and we fall to the
+            // deterministic ordering — a fabricated id is never acted on.
             Engine.ON_DEVICE_AI -> tryOnDeviceRanking(prompt, candidateIds) ?: candidateIds
             else -> candidateIds
         }
+    }
+
+    /**
+     * Rank grounded assertion candidates — the real entry point.
+     *
+     * `rankCandidates` above receives bare ids and so cannot rank on meaning: it
+     * has no text to score, and before AI-A-15 the deterministic branch simply
+     * returned the input order. This overload takes the candidate facts and runs
+     * the spec §17.3 relevance model, so the deterministic engine is an actual
+     * baseline rather than a passthrough.
+     *
+     * On-device AI may reorder the result; it can never add or invent a candidate.
+     */
+    fun rankAssertions(
+        intentText: String,
+        candidates: List<DeterministicRanker.Candidate>,
+    ): List<DeterministicRanker.Ranked> {
+        val deterministic = DeterministicRanker.rankAssertions(intentText, candidates)
+        if (currentEngine() != Engine.ON_DEVICE_AI || deterministic.size <= 1) return deterministic
+
+        val reordered = tryOnDeviceRanking(intentText, deterministic.map { it.candidateId })
+            ?: return deterministic
+        val byId = deterministic.associateBy { it.candidateId }
+        return reordered.mapNotNull { byId[it] }
     }
 
     fun explainSelector(prompt: String): String =
@@ -88,17 +115,37 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
     }
 
     /**
-     * Call the connected provider (Sarvam / OpenAI) for text completion. Used
-     * only after the user acknowledges the per-operation privacy prompt.
-     * The response is schema-validated: any non-string / non-JSON response is
-     * rejected and the caller falls back to deterministic output.
+     * Call the connected provider (Sarvam / OpenAI) for text completion.
+     *
+     * Refuses unless the caller passes `consentGranted`, and redacts the prompt
+     * before it leaves the device. Both were missing: the earlier version sent
+     * the prompt verbatim and relied on a docstring to say consent was required.
+     *
+     * The response body is returned raw and is NOT yet schema-validated — the
+     * caller must validate before using it. An earlier docstring claimed
+     * validation happened here; it did not, and claiming a safety property that
+     * does not exist is worse than not having it.
      */
-    fun connectedComplete(provider: String, apiKey: String, prompt: String): String? {
+    fun connectedComplete(
+        provider: String,
+        apiKey: String,
+        prompt: String,
+        consentGranted: Boolean,
+    ): String? {
+        // Spec §18.2 and CONTRIBUTING invariant 6: no connected call without
+        // explicit operation-level consent. The caller asserting it is the gate;
+        // this refuses rather than trusting that a caller remembered to check.
+        if (!consentGranted) return null
+
+        // Spec §14.2: redaction happens before any connected request, without
+        // exception. The previous version sent the caller's prompt verbatim.
+        val redacted = redactSensitive(prompt).text
+
         val (url, bodyJson) = when (provider) {
             "sarvam" -> "https://api.sarvam.ai/v1/completions" to
-                """{"prompt":${quote(prompt)},"max_tokens":256}"""
+                """{"prompt":${quote(redacted)},"max_tokens":256}"""
             "openai" -> "https://api.openai.com/v1/chat/completions" to
-                """{"model":"gpt-4o-mini","messages":[{"role":"user","content":${quote(prompt)}}]}"""
+                """{"model":"gpt-4o-mini","messages":[{"role":"user","content":${quote(redacted)}}]}"""
             else -> return null
         }
         val body = bodyJson.toRequestBody("application/json".toMediaTypeOrNull())
@@ -117,17 +164,42 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
 
     // -- Internal ---------------------------------------------------------------
 
-    private data class RedactionResult(val text: String, val changed: Boolean)
+    internal data class RedactionResult(val text: String, val changed: Boolean)
 
-    private fun redactSensitive(input: String): RedactionResult {
+    /**
+     * Redaction patterns, kept in step with `services/ai-lab/app/redaction`
+     * (Track B task AI-B-22 tracks full parity against the shared
+     * policy-fixtures set). The earlier version covered card numbers and OTPs
+     * only, so an email, phone number, bearer token, Aadhaar, PAN, IFSC or UPI
+     * handle in captured text would have passed straight through.
+     *
+     * Order matters: longer and more specific patterns run first.
+     */
+    private val REDACTION_PATTERNS: List<Pair<String, Regex>> = listOf(
+        "AADHAAR" to Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"),
+        "PAN" to Regex("\\b[A-Z]{5}\\d{4}[A-Z]\\b"),
+        "IFSC" to Regex("\\b[A-Z]{4}0[A-Z0-9]{6}\\b"),
+        "EMAIL" to Regex("\\b[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}\\b"),
+        "UPI" to Regex("\\b[\\w.+-]+@[a-z]{2,}(?:\\.[a-z]+)?\\b"),
+        "CARD" to Regex("\\b(?:\\d[ -]?){13,19}\\b"),
+        "PHONE" to Regex("\\b(?:\\+?\\d{1,3}[ -]?)?\\d{10}\\b"),
+        "TOKEN" to Regex("\\b(?:eyJ[\\w-]{10,}\\.[\\w-]{10,}\\.[\\w-]{10,}|[A-Za-z0-9_-]{32,})\\b"),
+    )
+
+    internal fun redactSensitive(input: String): RedactionResult {
         var out = input
         var changed = false
-        val cardRegex = Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b")
-        if (cardRegex.containsMatchIn(out)) { out = out.replace(cardRegex, "•••• redacted ••••"); changed = true }
+        for ((_, pattern) in REDACTION_PATTERNS) {
+            if (pattern.containsMatchIn(out)) {
+                out = pattern.replace(out, "[REDACTED]")
+                changed = true
+            }
+        }
+        // OTP digits need their context word to avoid eating ordinary numbers.
         val otpContext = Regex("(?i)\\bOTP\\b")
         val otpDigits = Regex("\\b\\d{4,8}\\b")
         if (otpContext.containsMatchIn(out) && otpDigits.containsMatchIn(out)) {
-            out = out.replace(otpDigits, "••••"); changed = true
+            out = out.replace(otpDigits, "[REDACTED]"); changed = true
         }
         return RedactionResult(out, changed)
     }

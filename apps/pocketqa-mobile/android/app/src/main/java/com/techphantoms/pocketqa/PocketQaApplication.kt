@@ -14,7 +14,10 @@ import com.techphantoms.pocketqa.bridge.PocketQaPackage
 
 class PocketQaApplication : Application(), ReactApplication {
 
-    override val reactNativeHost: ReactNativeHost = object : DefaultReactNativeHost(this) {
+    // `this` inside an object expression is the anonymous object, not the
+    // Application. DefaultReactNativeHost needs the Application instance.
+    override val reactNativeHost: ReactNativeHost =
+        object : DefaultReactNativeHost(this@PocketQaApplication) {
         override fun getPackages(): List<ReactPackage> {
             val packages = PackageList(this).packages.toMutableList()
             packages.add(PocketQaPackage())

@@ -107,8 +107,12 @@ object JsonBridge {
                 ReadableType.Boolean -> JsonPrimitive(arr.getBoolean(i))
                 ReadableType.Number  -> JsonPrimitive(arr.getDouble(i))
                 ReadableType.String  -> JsonPrimitive(arr.getString(i))
-                ReadableType.Map     -> readableMapToElement(arr.getMap(i))
-                ReadableType.Array   -> readableArrayToElement(arr.getArray(i))
+                // getMap/getArray are nullable in current RN; a null entry is
+                // JSON null, not a crash.
+                ReadableType.Map     ->
+                    arr.getMap(i)?.let { readableMapToElement(it) } ?: JsonNull
+                ReadableType.Array   ->
+                    arr.getArray(i)?.let { readableArrayToElement(it) } ?: JsonNull
             }
         }
         return JsonArray(list)
