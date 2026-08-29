@@ -116,6 +116,17 @@ object UiTreeCapture {
         return bytes.joinToString("") { "%02x".format(it) }.take(16)
     }
 
+    /**
+     * Splice a screenshot content:// URI into an already-emitted state payload.
+     * We keep the tree traversal and screenshot capture separate so the tree
+     * can still be persisted if the screenshot fails.
+     */
+    fun mergeScreenshotUri(payload: String, uri: String): String {
+        val obj = kotlinx.serialization.json.Json.parseToJsonElement(payload) as JsonObject
+        val next = JsonObject(obj + ("screenshotDataUri" to JsonPrimitive(uri)))
+        return next.toString()
+    }
+
     // Utility used by tests to build a JsonElement quickly.
     @Suppress("unused")
     fun asPrimitive(value: Any?): JsonElement = when (value) {

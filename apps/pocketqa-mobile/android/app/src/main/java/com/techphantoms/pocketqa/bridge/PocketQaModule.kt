@@ -75,6 +75,14 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
     private inline fun guard(promise: Promise, block: () -> Unit) {
         try {
             block()
+        } catch (e: com.techphantoms.pocketqa.OperationLock.ConflictingOperationException) {
+            rejectWithEnvelope(
+                promise,
+                "OPERATION_IN_PROGRESS",
+                e.message ?: "Another operation is running",
+                recoverable = true,
+                remediation = "Wait for the active ${e.current.kind} to finish, or cancel it first.",
+            )
         } catch (e: SecurityException) {
             rejectWithEnvelope(promise, "POLICY_HARD_STOP", e.message ?: "Blocked by policy", false, e.message)
         } catch (e: IllegalStateException) {
@@ -105,7 +113,7 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
 
     // ---------- Capture ----------
     @ReactMethod fun startCapture(input: ReadableMap, promise: Promise) {
-        capture.start(input, promise)
+        guard(promise) { capture.start(input, promise) }
     }
     @ReactMethod fun pauseCapture(id: String, promise: Promise) { capture.pause(id); promise.resolve(null) }
     @ReactMethod fun resumeCapture(id: String, promise: Promise) { capture.resume(id); promise.resolve(null) }
@@ -128,7 +136,9 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
     // ---------- Tests ----------
     @ReactMethod fun listTests(promise: Promise) { promise.resolve(repo.listTests()) }
     @ReactMethod fun getTest(id: String, version: Int?, promise: Promise) { promise.resolve(repo.getTest(id, version)) }
-    @ReactMethod fun startReplay(id: String, version: Int, promise: Promise) { executor.start(id, version, promise) }
+    @ReactMethod fun startReplay(id: String, version: Int, promise: Promise) {
+        guard(promise) { executor.start(id, version, promise) }
+    }
     @ReactMethod fun stopReplay(runId: String, promise: Promise) { executor.stop(runId); promise.resolve(null) }
     @ReactMethod fun getRun(id: String, promise: Promise) { promise.resolve(repo.run(id)) }
     @ReactMethod fun getEvidenceTimeline(id: String, promise: Promise) { promise.resolve(repo.evidenceTimeline(id)) }
@@ -153,7 +163,9 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
 
     // ---------- Missions ----------
     @ReactMethod fun createMission(input: ReadableMap, promise: Promise) { promise.resolve(repo.createMission(input)) }
-    @ReactMethod fun approveAndStartMission(id: String, promise: Promise) { explorer.start(id, promise) }
+    @ReactMethod fun approveAndStartMission(id: String, promise: Promise) {
+        guard(promise) { explorer.start(id, promise) }
+    }
     @ReactMethod fun stopMission(id: String, promise: Promise) { explorer.stop(id); promise.resolve(null) }
     @ReactMethod fun getMission(id: String, promise: Promise) { promise.resolve(repo.mission(id)) }
 

@@ -67,8 +67,16 @@ class PocketQaAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         val pkg = latestPackage ?: return
         val screen = latestScreen ?: "screen"
-        val snapshot = UiTreeCapture.snapshot(root, pkg, screen, System.currentTimeMillis())
-        CaptureCoordinator.onStableState(snapshot)
+        val baseline = UiTreeCapture.snapshot(root, pkg, screen, System.currentTimeMillis())
+        // Best-effort screenshot; falls back to no URI if the API is unavailable
+        // or a permission dialog covers the target window.
+        val screenshot = try {
+            ScreenshotCapture.takePng(this, applicationContext, baseline.stateId)
+        } catch (_: Throwable) { null }
+        val enriched = if (screenshot != null) {
+            baseline.copy(payload = UiTreeCapture.mergeScreenshotUri(baseline.payload, screenshot.uri))
+        } else baseline
+        CaptureCoordinator.onStableState(enriched)
     }
 
     override fun onInterrupt() { /* required override, no-op */ }

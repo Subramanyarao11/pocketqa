@@ -45,6 +45,70 @@ class CaptureCoordinator(
         fun onStableState(snapshot: UiTreeCapture.Snapshot) {
             stateSink?.invoke(snapshot)
         }
+
+        /**
+         * Replay/Explorer entry point — take a fresh snapshot on demand rather
+         * than waiting for the next debounced state.  Returns null when no
+         * accessibility service is connected.
+         */
+        fun snapshotNow(packageName: String, screenName: String): UiTreeCapture.Snapshot? {
+            val svc = service.get() ?: return null
+            val root = svc.rootInActiveWindow ?: return null
+            return UiTreeCapture.snapshot(root, packageName, screenName, System.currentTimeMillis())
+        }
+
+        /**
+         * Find a node by `nodeId` and perform a click. Returns true on success.
+         * `nodeId` is the path index we assigned during tree traversal.
+         */
+        fun performClick(nodeId: String): Boolean {
+            val svc = service.get() ?: return false
+            val root = svc.rootInActiveWindow ?: return false
+            val node = findByPathId(root, nodeId, "n") ?: return false
+            return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
+        }
+
+        fun performLongPress(nodeId: String): Boolean {
+            val svc = service.get() ?: return false
+            val root = svc.rootInActiveWindow ?: return false
+            val node = findByPathId(root, nodeId, "n") ?: return false
+            return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK)
+        }
+
+        fun performTypeText(nodeId: String, value: String): Boolean {
+            val svc = service.get() ?: return false
+            val root = svc.rootInActiveWindow ?: return false
+            val node = findByPathId(root, nodeId, "n") ?: return false
+            val args = android.os.Bundle().apply {
+                putCharSequence(
+                    android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                    value,
+                )
+            }
+            return node.performAction(
+                android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
+                args,
+            )
+        }
+
+        fun performBack(): Boolean {
+            val svc = service.get() ?: return false
+            return svc.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+        }
+
+        private fun findByPathId(
+            node: android.view.accessibility.AccessibilityNodeInfo?,
+            target: String,
+            currentPath: String,
+        ): android.view.accessibility.AccessibilityNodeInfo? {
+            if (node == null) return null
+            if (currentPath == target) return node
+            for (i in 0 until node.childCount) {
+                val hit = findByPathId(node.getChild(i), target, "${currentPath}_$i")
+                if (hit != null) return hit
+            }
+            return null
+        }
     }
 
     fun openAccessibilitySettings() {
@@ -61,6 +125,10 @@ class CaptureCoordinator(
         if (!policy.inAllowlist(session.packageName)) {
             return promise.reject("POLICY_DENIED", "package not allowlisted")
         }
+        // §10.2 — hold the process-wide operation lock for the entire session.
+        com.techphantoms.pocketqa.OperationLock.acquire(
+            com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, session.id
+        )
         activePackage.set(session.packageName)
         activeSession.set(session.id)
         // Sink stable states from the accessibility service into Room and echo
@@ -123,6 +191,9 @@ class CaptureCoordinator(
         activePackage.set(null)
         activeSession.set(null)
         stateSink = null
+        com.techphantoms.pocketqa.OperationLock.release(
+            com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, sessionId
+        )
         val out = com.facebook.react.bridge.Arguments.createMap()
         out.putString("compileJobId", jobId)
         promise.resolve(out)
@@ -132,6 +203,9 @@ class CaptureCoordinator(
         activePackage.set(null)
         activeSession.set(null)
         stateSink = null
+        com.techphantoms.pocketqa.OperationLock.release(
+            com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE, sessionId
+        )
         repo.cancelSession(sessionId, deleteArtifacts)
     }
 
