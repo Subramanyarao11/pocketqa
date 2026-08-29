@@ -3,11 +3,13 @@
 **Written after a full on-device run** on the iQOO I2501 (Android 16, SDK 36) against
 `internalLabDebug` and the Demo Shop, on 2026-08-29.
 
-This document has two halves. Part 1 records what was found and fixed getting the
-app to run end to end, so none of it has to be rediscovered. Part 2 is the design
-for the one problem that cannot be fixed by patching: **PocketQA cannot currently
-capture a tap in a Jetpack Compose app**, and the fix for that is what turns
-PocketQA from a demo into a product.
+Four parts. **Part 1** records what was found and fixed getting the app to run end
+to end, so none of it has to be rediscovered. **Part 2** is the design for the one
+problem that cannot be fixed by patching: **PocketQA cannot currently capture a
+tap in a Jetpack Compose app**, and the fix for that is what turns PocketQA from a
+demo into a product. **Part 3** is how both apps were driven over `adb` from a
+laptop, with the script and the traps, because the method is reusable and its
+limits bound what Part 1 can claim. **Part 4** is what remains open.
 
 ---
 
@@ -311,7 +313,176 @@ the algorithm needs.
 
 ---
 
-## Part 3 — What is still open
+## Part 3 — How the apps were driven
+
+Everything in Part 1 was established by driving both apps over `adb` from a
+laptop, with no human touching the phone. Recording the method here because it is
+reusable, and because its limits shaped what could and could not be concluded.
+
+### 3.1 The toolchain
+
+No plugin or framework — `adb` through a shell is enough:
+
+| Need | Command |
+|---|---|
+| Read the screen | `adb shell uiautomator dump /sdcard/d.xml` then `adb shell cat /sdcard/d.xml` |
+| Tap | `adb shell input tap <x> <y>` |
+| Type | `adb shell input text "SAVE20"` |
+| Dismiss keyboard | `adb shell input keyevent KEYCODE_BACK` |
+| Scroll | `adb shell input swipe 720 2400 720 1200 300` |
+| Launch | `adb shell am start -n com.techphantoms.pocketqa/.MainActivity` |
+| Reset the fixture | `adb shell am start -a android.intent.action.VIEW -d "demoshop://reset"` |
+| Which app is in front | `adb shell dumpsys activity activities \| grep -m1 ResumedActivity` |
+| Is the service bound | `adb shell dumpsys accessibility \| grep -oE "Service\[label=[^,]*"` |
+
+### 3.2 Tapping by text rather than coordinates
+
+Hardcoded coordinates break the moment a layout shifts, so every tap resolved its
+target from the live view tree first. This one helper did most of the work:
+
+```sh
+#!/bin/sh
+# tap.sh — dump the tree, find a node whose text contains $1, tap its centre
+ADB=~/Library/Android/sdk/platform-tools/adb
+$ADB shell uiautomator dump /sdcard/d.xml >/dev/null 2>&1
+COORD=$($ADB shell cat /sdcard/d.xml 2>/dev/null | tr -d '\r' | python3 -c "
+import sys, re
+x = sys.stdin.read(); want = sys.argv[1].lower()
+for m in re.finditer(r'<node[^>]*>', x):
+    t = m.group(0)
+    txt = re.search(r'text=\"([^\"]*)\"', t)
+    b = re.search(r'bounds=\"\[(\d+),(\d+)\]\[(\d+),(\d+)\]\"', t)
+    if txt and b and want in txt.group(1).lower():
+        l, tp, r, bt = map(int, b.groups())
+        if r > l and bt > tp:            # skip degenerate/inverted bounds
+            print(f'{(l + r) // 2} {(tp + bt) // 2}'); break
+" "$1")
+[ -n "$COORD" ] && $ADB shell input tap $COORD && echo "tapped '$1' at $COORD" \
+                || echo "'$1' NOT FOUND"
+```
+
+The `r > l and bt > tp` guard earns its place: PocketQA's own review screen
+renders a `Try` button with inverted bounds — `[1140,3018][1223,2799]`, bottom
+above top — which yields a negative-height rectangle and an untappable control.
+That is a real UI bug found by the driver rather than by the eye.
+
+When a screen had several controls with the same label (three `Send` buttons, two
+`Add` buttons), the helper's first-match rule was not enough and taps were issued
+against explicitly enumerated bounds instead.
+
+### 3.3 The sequence that works
+
+```sh
+# 1. Build arm64 only; bundle with --dev false
+cd apps/pocketqa-mobile
+npx react-native bundle --platform android --dev false --entry-file index.js \
+  --bundle-output android/app/src/main/assets/index.android.bundle \
+  --assets-dest android/app/src/main/res
+cd android && ./gradlew :app:assembleInternalLabDebug -PreactNativeArchitectures=arm64-v8a
+adb install -r app/build/outputs/apk/internalLab/debug/app-internalLab-debug.apk
+
+# 2. Enable the capture service AFTER installing, preserving any other service
+adb shell settings put secure enabled_accessibility_services \
+  "com.techphantoms.pocketqa/com.techphantoms.pocketqa.capture.PocketQaAccessibilityService"
+adb shell settings put secure accessibility_enabled 1
+
+# 3. Launch — and never force-stop from here on
+adb shell am start -n com.techphantoms.pocketqa/.MainActivity
+
+# 4. Onboarding
+tap "Continue" ; tap "I understand what PocketQA" ; tap "I agree"
+swipe up ; tap "Continue"                    # readiness, button below the fold
+
+# 5. Author a test — the target app must be tapped, it is not selected by default
+tap "+ New test" ; tap "PocketQA Demo Shop" ; tap "Coupon retry (canonical)"
+tap "I acknowledge that PocketQA will capture" ; tap "Continue"
+tap "Start demonstration"                    # foregrounds Demo Shop
+
+# 6. Demonstrate in Demo Shop
+tap "Add" ; tap "Cart" ; tap "Coupon Code"
+adb shell input text "SAVE20" ; adb shell input keyevent KEYCODE_BACK
+tap "Apply"                                  # → Discount (20%): -$16.00, Total: $63.99
+
+# 7. Back to PocketQA and finish
+adb shell am start -n com.techphantoms.pocketqa/.MainActivity
+tap "Finish"                                 # → Compile → Review draft
+```
+
+### 3.4 Diagnosing from the host
+
+Two techniques did most of the diagnostic work.
+
+**Filtered logcat.** The device is noisy — HackTracker rebinds every few seconds
+and `AccessibilityNodeInfoDumper` logs a paragraph per invisible node — so every
+useful read was a filtered one:
+
+```sh
+adb logcat -c                                  # clear, act, then read
+adb logcat -d | grep -A14 "FATAL EXCEPTION"    # the SoLoader and theme crashes
+adb logcat -d -s PocketQaCapture               # a temporary tag, see below
+```
+
+**Temporary instrumentation.** The decisive evidence for Part 2 came from adding
+one log line to `PocketQaAccessibilityService.onAccessibilityEvent` recording each
+event type, then counting them:
+
+```sh
+adb logcat -d -s PocketQaCapture | grep -oE "type=[A-Z_]+" | sort | uniq -c
+#   6 type=TYPE_WINDOW_CONTENT_CHANGED
+#   2 type=TYPE_WINDOW_STATE_CHANGED
+#   1 type=TYPE_VIEW_TEXT_CHANGED
+#     ← zero TYPE_VIEW_CLICKED
+```
+
+A second pair of lines in `CaptureCoordinator.onEvent` and `onStableState` showed
+the before/after state ids and the pending-event count at each transition, which
+is what proved the taps were never classified rather than classified-and-dropped.
+Both were removed before committing.
+
+### 3.5 Limits of driving it this way
+
+Worth stating plainly, because they bound what Part 1 can claim.
+
+- **The driver is itself an accessibility client.** `uiautomator dump` binds as
+  one, so every screen read perturbs the system being measured. Reads were taken
+  between PocketQA's operations, never during one, and even so this is the least
+  trustworthy part of the method.
+- **A second accessibility service was always present.** `com.reskill.hacktracker`
+  is preinstalled on the loaner device and cannot be removed. Multiple services
+  coexist normally on Android, and it was ruled out as a cause — but its constant
+  rebinding is noise in every log.
+- **`am force-stop` silently disables the app's accessibility service.** This cost
+  the most time by far: the readiness screen would correctly report "Needs
+  action" and the obvious conclusion — that the service was broken — was wrong.
+  Reinstalling has the same effect.
+- **LogBox eats taps.** With a `--dev true` bundle the warning badge overlays the
+  bottom of the screen and swallows presses on primary buttons, which is
+  indistinguishable from a frozen app. `--dev false` removes it.
+- **The soft keyboard steals coordinates.** After `input text`, the keyboard
+  covers the lower third; a tap meant for `Checkout` landed in the text field and
+  typed a stray character. Always dismiss with `KEYCODE_BACK` before the next tap.
+- **Compose views expose no `clickable` attribute** in the uiautomator dump, so
+  the "tap the first clickable node" strategy does not work — matching by text is
+  the only reliable option, which is the same limitation Part 2 is about.
+
+### 3.6 What this means for automated regressions
+
+The earlier question was whether this could run unattended on a schedule. The
+method above is most of the answer, with three caveats:
+
+1. **It must run on this machine.** A scheduled cloud agent cannot see a
+   USB-attached phone.
+2. **Determinism comes from the fixture reset**, not from the driver. Without
+   `demoshop://reset` the runs drift and a regression suite becomes noise.
+3. **The right home for this is a project skill plus a script under
+   `scripts/device-harness/`**, so any session runs the same runbook rather than
+   improvising `adb` each time. The state-capture half of it is already specified
+   as Track B's `AI-B-03` (`uiauto_to_uistate.py`), and the same dumps would feed
+   the labelled corpus that `CAP-03` needs.
+
+---
+
+## Part 4 — What is still open
 
 - **Approve is unreachable** until inference lands, so replay, evidence and
   Maestro export remain unverified on device. They are implemented; they have
