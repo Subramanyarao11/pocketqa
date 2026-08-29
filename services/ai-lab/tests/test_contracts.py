@@ -30,9 +30,18 @@ def test_committed_schemas_match_the_models():
         assert committed == schema, f"{name} is stale — run `make schemas`"
 
 
-def test_schema_index_lists_every_task():
-    index = json.loads((SCHEMA_DIR / "index.json").read_text())
-    assert sorted(index["tasks"]) == TASK_IDS
+def test_committed_index_matches_the_registry():
+    """The whole index, not just the task names.
+
+    Checking only the names let a `classify_flake` prompt bump from v1 to v2 ship
+    with a stale `promptVersion` in the committed contract. The CI regenerate-
+    and-diff step caught it; this test now catches it a step earlier.
+    """
+    from app.export_schemas import build_index
+
+    committed = json.loads((SCHEMA_DIR / "index.json").read_text())
+    assert committed == build_index(), "index.json is stale — run `make schemas`"
+    assert sorted(committed["tasks"]) == TASK_IDS
 
 
 @pytest.mark.parametrize("task_id", TASK_IDS)

@@ -37,15 +37,12 @@ def build() -> dict[str, dict]:
     return documents
 
 
-def write() -> list[Path]:
-    SCHEMA_DIR.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
-    for name, schema in build().items():
-        path = SCHEMA_DIR / name
-        path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        written.append(path)
-
-    index = {
+def build_index() -> dict:
+    """The index is part of the contract, not a convenience listing: it carries
+    the prompt version each schema was generated against. A test compares the
+    whole document, because comparing only the task names let a prompt-version
+    bump ship stale."""
+    return {
         "note": HEADER_NOTE,
         "tasks": {
             task_id: {
@@ -57,6 +54,17 @@ def write() -> list[Path]:
             for task_id, spec in sorted(all_tasks().items())
         },
     }
+
+
+def write() -> list[Path]:
+    SCHEMA_DIR.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for name, schema in build().items():
+        path = SCHEMA_DIR / name
+        path.write_text(json.dumps(schema, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        written.append(path)
+
+    index = build_index()
     index_path = SCHEMA_DIR / "index.json"
     index_path.write_text(json.dumps(index, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     written.append(index_path)

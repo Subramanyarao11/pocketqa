@@ -8,7 +8,7 @@
       "summary": "Rate and explain accessibility findings produced by deterministic rules."
     },
     "classify_flake": {
-      "promptVersion": "v1",
+      "promptVersion": "v2",
       "request": "classify_flake.request.json",
       "response": "classify_flake.response.json",
       "summary": "Classify failed runs by spec 23.2 rules and group them by shared cause."
