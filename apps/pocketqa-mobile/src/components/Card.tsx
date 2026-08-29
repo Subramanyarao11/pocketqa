@@ -1,6 +1,6 @@
 import { PropsWithChildren } from "react";
-import { StyleSheet, View, ViewStyle } from "react-native";
-import { colors, radius, spacing } from "@theme";
+import { View, ViewStyle } from "react-native";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme, type ThemeColors } from "@theme";
 
 export type CardTone = "surface" | "callout" | "warn" | "danger" | "info";
 
@@ -9,24 +9,31 @@ export function Card({
   tone = "surface",
   style,
 }: PropsWithChildren<{ tone?: CardTone; style?: ViewStyle }>) {
-  return <View style={[styles.base, palette(tone), style]}>{children}</View>;
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
+  return <View style={[styles.base, palette(colors, tone), style]}>{children}</View>;
 }
 
-function palette(tone: CardTone): ViewStyle {
+function palette(colors: ThemeColors, tone: CardTone): ViewStyle {
   switch (tone) {
-    case "surface": return { backgroundColor: colors.surfaceRaised, borderColor: colors.border };
-    case "callout": return { backgroundColor: "rgba(199,255,74,0.06)", borderColor: colors.lime };
-    case "warn":    return { backgroundColor: "rgba(242,184,75,0.06)", borderColor: colors.amber };
-    case "danger":  return { backgroundColor: "rgba(255,102,122,0.06)", borderColor: colors.red };
-    case "info":    return { backgroundColor: "rgba(89,217,255,0.05)", borderColor: colors.cyan };
+    case "surface": return { backgroundColor: colors.surface, borderColor: colors.border };
+    case "callout": return { backgroundColor: colors.successSurface, borderColor: colors.border, borderLeftColor: colors.lime, borderLeftWidth: 3 };
+    case "warn":    return { backgroundColor: colors.warningSurface, borderColor: colors.border, borderLeftColor: colors.amber, borderLeftWidth: 3 };
+    case "danger":  return { backgroundColor: colors.dangerSurface, borderColor: colors.border, borderLeftColor: colors.red, borderLeftWidth: 3 };
+    case "info":    return { backgroundColor: colors.infoSurface, borderColor: colors.border, borderLeftColor: colors.cyan, borderLeftWidth: 3 };
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, isDark }: AppTheme) => ({
   base: {
     borderRadius: radius.card,
     borderWidth: 1,
     padding: spacing.lg,
-    gap: spacing.sm,
+    gap: spacing.md,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: isDark ? 0 : 0.035,
+    shadowRadius: 8,
+    elevation: isDark ? 0 : 1,
   },
 });

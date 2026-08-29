@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme } from "@theme";
 import { Card, type CardTone } from "./Card";
 
 export interface InlineNoticeProps {
@@ -11,6 +11,7 @@ export interface InlineNoticeProps {
 
 /** Info/warning/error/local-mode strip. Never rely on colour alone. */
 export function InlineNotice({ title, detail, tone = "info", icon }: InlineNoticeProps) {
+  const { colors, typography } = useAppTheme();
   const roleForTone = tone === "danger" ? "alert" : "summary";
   const spoken = detail ? `${title}. ${detail}` : title;
   return (

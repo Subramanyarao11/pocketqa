@@ -1,16 +1,19 @@
 import { useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { Check } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import { AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, TopBar } from "@components";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { PocketQaNative } from "@native";
 
 export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [consent, setConsent] = useState(false);
 
   return (
     <>
-      <TopBar title="Capture disclosure" onBack={() => navigation.goBack()} />
+      <TopBar title="Capture and privacy" subtitle="Review before enabling" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card>
           <Text style={typography.eyebrow}>What PocketQA does</Text>
@@ -43,7 +46,7 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
           accessibilityHint="Toggles capture disclosure consent."
         >
           <View style={[styles.box, { borderColor: consent ? colors.lime : colors.borderStrong, backgroundColor: consent ? colors.lime : "transparent" }]}>
-            {consent && <Text style={{ color: "#0A0F14", fontWeight: "900" }}>✓</Text>}
+            {consent && <Check color={colors.onAccent} size={16} strokeWidth={3} />}
           </View>
           <Text style={[typography.body, { flex: 1 }]}>
             I understand what PocketQA can inspect and where it can act.
@@ -70,7 +73,7 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   consentRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -78,8 +81,8 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.md,
   },
   box: {
-    width: 24, height: 24,
-    borderRadius: 6, borderWidth: 2,
+    width: 26, height: 26,
+    borderRadius: 7, borderWidth: 2,
     alignItems: "center", justifyContent: "center",
   },
 });

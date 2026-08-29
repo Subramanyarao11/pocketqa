@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, Card, GhostButton, PersistentStopButton, StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type MissionProgress, type MissionSummary, type PocketQaEvent } from "@native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<"ExplorerMissionControl">) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [progress, setProgress] = useState<MissionProgress | null>(null);
   const [summary, setSummary] = useState<MissionSummary | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -75,7 +77,7 @@ export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   rowPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
   logLine: { fontFamily: "monospace", fontSize: 12, color: colors.textMuted, paddingVertical: 2 },
   rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, alignItems: "center" },

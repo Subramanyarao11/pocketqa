@@ -1,10 +1,12 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { StatusPill } from "./StatusPill";
 import type { StepResult, TestStep } from "@domain";
 
 /** Replay step + result row (§7.11 timeline). */
 export function TimelineRow({ step, index, result }: { step: TestStep; index: number; result?: StepResult }) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const tone = result?.status === "pass" ? "lime" : result?.status === "fail" ? "red" : "dim";
   return (
     <View style={styles.row}>
@@ -28,7 +30,7 @@ export function TimelineRow({ step, index, result }: { step: TestStep; index: nu
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
@@ -38,8 +40,9 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   tick: {
-    width: 32, height: 32, borderRadius: 8,
+    width: 34, height: 34, borderRadius: 9,
     borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: "center", justifyContent: "center",
   },
 });

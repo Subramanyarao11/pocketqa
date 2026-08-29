@@ -1,6 +1,7 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
-import { colors, spacing, typography } from "@theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export interface TopBarProps {
   title: string;
@@ -11,35 +12,45 @@ export interface TopBarProps {
 
 /** Predictable-height top bar with optional back + context action. */
 export function TopBar({ title, subtitle, onBack, right }: TopBarProps) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
+  const insets = useSafeAreaInsets();
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
+  );
   return (
-    <View style={styles.root}>
-      <View style={styles.leftGroup}>
-        {onBack && (
-          <TouchableOpacity
-            onPress={onBack}
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            hitSlop={12}
-            style={styles.backBtn}
-          >
-            <ChevronLeft color={colors.text} size={20} />
-          </TouchableOpacity>
-        )}
-        <View style={{ minWidth: 0, flexShrink: 1 }}>
-          <Text style={typography.title} numberOfLines={1}>{title}</Text>
-          {subtitle ? <Text style={typography.bodyMuted} numberOfLines={1}>{subtitle}</Text> : null}
+    <View style={[styles.safe, { paddingTop: topInset }]}>
+      <View style={styles.root} accessibilityRole="header">
+        <View style={styles.leftGroup}>
+          {onBack && (
+            <TouchableOpacity
+              onPress={onBack}
+              accessibilityRole="button"
+              accessibilityLabel="Back"
+              hitSlop={12}
+              style={styles.backBtn}
+            >
+              <ChevronLeft color={colors.text} size={20} strokeWidth={2.2} />
+            </TouchableOpacity>
+          )}
+          <View style={{ minWidth: 0, flexShrink: 1 }}>
+            <Text style={typography.title} numberOfLines={1}>{title}</Text>
+            {subtitle ? <Text style={typography.bodyMuted} numberOfLines={1}>{subtitle}</Text> : null}
+          </View>
         </View>
+        {right ? <View>{right}</View> : null}
       </View>
-      {right ? <View>{right}</View> : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
+  safe: { backgroundColor: colors.background },
   root: {
-    minHeight: 48,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
+    minHeight: 64,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: 20,
     backgroundColor: colors.background,
     flexDirection: "row",
     alignItems: "center",
@@ -51,9 +62,10 @@ const styles = StyleSheet.create({
   leftGroup: { flexDirection: "row", alignItems: "center", gap: spacing.md, flex: 1 },
   backBtn: {
     width: 40, height: 40,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: colors.border,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
   },

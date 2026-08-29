@@ -1,9 +1,10 @@
 import { Text } from "react-native";
 import type { ScreenProps } from "@navigation";
 import { AppScreen, Card, TopBar } from "@components";
-import { typography } from "@theme";
+import { useAppTheme } from "@theme";
 
 export function ProviderSettingsScreen({ navigation }: ScreenProps<"ProviderSettings">) {
+  const { typography } = useAppTheme();
   return (
     <>
       <TopBar title="Providers" subtitle="Credentials stored in native vault" onBack={() => navigation.goBack()} />

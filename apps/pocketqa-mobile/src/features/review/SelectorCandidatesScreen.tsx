@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
@@ -7,10 +7,12 @@ import {
 } from "@components";
 import { PocketQaNative, type SelectorCandidate } from "@native";
 import { useDraftEditorStore } from "@store";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /** §7.9 — user picks a grounded, policy-filtered selector; executor never picks silently. */
 export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"SelectorCandidates">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const { draftId, stepId } = route.params;
   const [candidates, setCandidates] = useState<SelectorCandidate[]>([]);
   const [selected, setSelected] = useState<number | null>(null);
@@ -107,14 +109,14 @@ export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"Sel
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   headline: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm },
   selectorValue: {
     fontFamily: "monospace",
     fontSize: 12,
     color: colors.cyan,
-    backgroundColor: "rgba(89,217,255,0.06)",
+    backgroundColor: colors.infoSurface,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: 6,

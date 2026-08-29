@@ -20,7 +20,7 @@ export function ReadinessScreen({ navigation }: ScreenProps<"Readiness">) {
 
   return (
     <>
-      <TopBar title="Device readiness" subtitle="§7.3 — capability router" onBack={() => navigation.goBack()} />
+      <TopBar title="Device readiness" subtitle="Local capabilities and permissions" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card>
           <ReadinessRow

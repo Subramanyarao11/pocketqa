@@ -1,9 +1,10 @@
 import { Text } from "react-native";
 import type { ScreenProps } from "@navigation";
 import { AppScreen, Card, TopBar } from "@components";
-import { typography } from "@theme";
+import { useAppTheme } from "@theme";
 
 export function DataAndPrivacyScreen({ navigation }: ScreenProps<"DataAndPrivacy">) {
+  const { typography } = useAppTheme();
   return (
     <>
       <TopBar title="Data and privacy" onBack={() => navigation.goBack()} />

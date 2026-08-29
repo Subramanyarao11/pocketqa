@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
+import { Clipboard, FileCode2, Share2 } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
@@ -8,9 +9,11 @@ import {
 import {
   PocketQaNative, type EvidenceStep, type FailureProposal, type ReplayRunSummary,
 } from "@native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [run, setRun] = useState<ReplayRunSummary | null>(null);
   const [timeline, setTimeline] = useState<EvidenceStep[]>([]);
   const [proposal, setProposal] = useState<FailureProposal | null>(null);
@@ -53,7 +56,7 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
     <>
       <TopBar
         title="Evidence"
-        subtitle="§7.11 · pass/fail facts, provenance, network"
+        subtitle="Result, provenance, and captured states"
         right={<StatusPill label={pass ? "PASS" : "FAIL"} tone={pass ? "lime" : "red"} />}
         onBack={() => navigation.replace("Home")}
       />
@@ -127,6 +130,7 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
       <BottomActionBar>
         <GhostButton
           label="Share YAML"
+          icon={<FileCode2 color={colors.text} size={16} />}
           onPress={async () => {
             const art = await PocketQaNative.exportTest(run.test.id, run.test.version);
             await PocketQaNative.shareArtifact(art.uri, art.mimeType);
@@ -134,6 +138,7 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
         />
         <GhostButton
           label="Copy diagnostics"
+          icon={<Clipboard color={colors.text} size={16} />}
           onPress={async () => {
             await PocketQaNative.copyRedactedDiagnostics(run.runId);
             setCopyState("copied");
@@ -143,6 +148,7 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
         <View style={{ flex: 1 }} />
         <PrimaryButton
           label="Share evidence"
+          icon={<Share2 color={colors.onAccent} size={16} />}
           onPress={async () => {
             const art = await PocketQaNative.exportEvidence(run.runId);
             await PocketQaNative.shareArtifact(art.uri, art.mimeType);
@@ -153,7 +159,7 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   detectiveHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   detectiveActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },

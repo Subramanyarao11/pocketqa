@@ -1,6 +1,6 @@
 import React from 'react';
 import {TouchableOpacity, Text, StyleSheet} from 'react-native';
-import {colors, spacing, typography} from '../theme';
+import {spacing, useAppTheme} from '../theme';
 
 interface PrimaryButtonProps {
   title: string;
@@ -9,20 +9,20 @@ interface PrimaryButtonProps {
 }
 
 export function PrimaryButton({title, onPress, disabled}: PrimaryButtonProps): React.JSX.Element {
+  const {colors, typography} = useAppTheme();
   return (
     <TouchableOpacity
-      style={[styles.button, disabled && styles.disabled]}
+      style={[styles.button, {backgroundColor: colors.lime}, disabled && styles.disabled]}
       onPress={onPress}
       disabled={disabled}
       activeOpacity={0.8}>
-      <Text style={styles.text}>{title}</Text>
+      <Text style={[styles.text, typography.h2, {color: colors.onAccent}]}>{title}</Text>
     </TouchableOpacity>
   );
 }
 
 const styles = StyleSheet.create({
   button: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.sm + 4,
     paddingHorizontal: spacing.lg,
     borderRadius: 12,
@@ -30,5 +30,5 @@ const styles = StyleSheet.create({
     minWidth: 200,
   },
   disabled: {opacity: 0.5},
-  text: {...typography.label, color: colors.text},
+  text: {fontSize: 14, fontWeight: '700'},
 });

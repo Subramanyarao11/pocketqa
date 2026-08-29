@@ -1,13 +1,16 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Play } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, Card, PersistentStopButton, PrimaryButton, StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type PocketQaEvent, type ReplayProgress } from "@native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"ReplayMissionControl">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [runId, setRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReplayProgress | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -66,17 +69,23 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
           ))}
         </Card>
 
-        <PrimaryButton label={running ? "Running…" : "▶ Replay locally"} onPress={start} disabled={running} block />
+        <PrimaryButton
+          label={running ? "Running…" : "Replay locally"}
+          icon={<Play color={colors.onAccent} size={17} fill={colors.onAccent} />}
+          onPress={start}
+          disabled={running}
+          block
+        />
       </AppScreen>
       {running && <PersistentStopButton onStop={() => runId && PocketQaNative.stopReplay(runId)} />}
     </>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   bar: {
-    height: 4, borderRadius: 2, backgroundColor: colors.border, marginTop: spacing.sm, overflow: "hidden",
+    height: 6, borderRadius: 3, backgroundColor: colors.surfaceMuted, marginTop: spacing.sm, overflow: "hidden",
   },
-  fill: { height: 4, backgroundColor: colors.lime },
-  logLine: { fontFamily: "monospace", fontSize: 12, color: colors.textMuted, paddingVertical: 2 },
+  fill: { height: 6, backgroundColor: colors.lime },
+  logLine: { fontFamily: "monospace", fontSize: 12, lineHeight: 19, color: colors.textMuted, paddingVertical: 2 },
 });

@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
-import { colors, radius, spacing, typography } from "@theme";
+import { Text, View } from "react-native";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /**
  * Redacted image placeholder for a captured state.  Native side will
@@ -15,6 +15,8 @@ export function EvidenceThumbnail({
   uri?: string;
   redactionCount?: number;
 }) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <View style={styles.wrap} accessibilityLabel={`Evidence: ${screenName}, ${redactionCount} redactions applied`}>
       <View style={styles.image}>
@@ -30,7 +32,7 @@ export function EvidenceThumbnail({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   wrap: {
     borderRadius: radius.card,
     padding: spacing.sm,
@@ -43,7 +45,7 @@ const styles = StyleSheet.create({
   image: {
     aspectRatio: 9 / 16,
     borderRadius: radius.input,
-    backgroundColor: "#0E1620",
+    backgroundColor: colors.surfaceMuted,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -1,24 +1,27 @@
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
+import { ShieldCheck } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative } from "@native";
-import { colors, radius, spacing, typography } from "@theme";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { ALLOWLISTED_PACKAGES } from "@domain";
 
 export function AgentLabScreen({ navigation }: ScreenProps<"AgentLab">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [goal, setGoal] = useState("Find a nearby checkout state we forgot to test after applying a coupon.");
   const [budget, setBudget] = useState(3);
   const [seconds, setSeconds] = useState(60);
 
   return (
     <>
-      <TopBar title="Agent Lab" subtitle="Experimental · internal build" onBack={() => navigation.goBack()} />
+      <TopBar title="Agent Lab" subtitle="Bounded exploratory testing" onBack={() => navigation.goBack()} />
       <AppScreen>
-        <Card tone="danger">
-          <StatusPill label="EXPLORER_LAB_ENABLED" tone="red" />
+        <Card tone="info">
+          <StatusPill label="Internal lab mode" tone="violet" />
           <Text style={typography.bodyMuted}>
             Explorer proposes actions inside a bounded mission. Payments, accounts, permissions,
             destructive actions, sensitive fields, system UI, and other apps are always blocked.
@@ -65,6 +68,7 @@ export function AgentLabScreen({ navigation }: ScreenProps<"AgentLab">) {
         <View style={{ flex: 1 }} />
         <PrimaryButton
           label="Review mission"
+          icon={<ShieldCheck color={colors.onAccent} size={17} />}
           onPress={async () => {
             const mission = await PocketQaNative.createMission({
               goal,
@@ -86,13 +90,13 @@ function StepperButton({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   textarea: {
     minHeight: 84,
     padding: spacing.md,
     borderRadius: radius.input,
     borderWidth: 1, borderColor: colors.borderStrong,
-    color: colors.text, textAlignVertical: "top",
+    color: colors.text, textAlignVertical: "top", backgroundColor: colors.surface,
   },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.xs },
   stepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

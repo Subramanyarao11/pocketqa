@@ -5,9 +5,10 @@ import {
   AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type MissionSummary } from "@native";
-import { typography } from "@theme";
+import { useAppTheme } from "@theme";
 
 export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionReview">) {
+  const { typography } = useAppTheme();
   const [summary, setSummary] = useState<MissionSummary | null>(null);
 
   useEffect(() => {
@@ -17,6 +18,15 @@ export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionR
   if (!summary) return <><TopBar title="Mission review" /><AppScreen><Text style={typography.bodyMuted}>Loading…</Text></AppScreen></>;
 
   const m = summary.mission;
+  // Native policy enforcement does not depend on this presentation field. Some
+  // persisted Android missions predate `hardStops`; keep review readable while
+  // showing the same non-negotiable boundaries enforced by the policy engine.
+  const hardStops = m.hardStops?.length ? m.hardStops : [
+    "Payments and purchases",
+    "Accounts and permissions",
+    "Sensitive input and destructive actions",
+    "System UI and cross-app navigation",
+  ];
   return (
     <>
       <TopBar title="Mission review" subtitle="Approve as a whole" onBack={() => navigation.goBack()} />
@@ -36,7 +46,7 @@ export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionR
         </Card>
         <Card tone="info">
           <Text style={typography.eyebrow}>Hard stops (always blocked)</Text>
-          {m.hardStops.map((s) => (
+          {hardStops.map((s) => (
             <Text key={s} style={typography.body}>• {s}</Text>
           ))}
         </Card>

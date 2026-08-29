@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View } from "react-native";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { StatusPill } from "./StatusPill";
 import { GhostButton } from "./Button";
 
@@ -18,6 +18,8 @@ const map = {
 };
 
 export function ReadinessRow({ label, status, detail, action }: ReadinessRowProps) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const { tone, copy } = map[status];
   return (
     <View
@@ -38,7 +40,7 @@ export function ReadinessRow({ label, status, detail, action }: ReadinessRowProp
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
