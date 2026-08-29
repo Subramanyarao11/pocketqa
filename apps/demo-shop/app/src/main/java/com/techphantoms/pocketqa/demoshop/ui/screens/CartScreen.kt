@@ -74,7 +74,9 @@ fun CartScreen(
                         onClick = { onApplyCoupon(couponCode) },
                         modifier = Modifier.testTag("apply_coupon_button")
                     ) {
-                        Text("Apply")
+                        // Confirming on the control that was pressed, not only in
+                        // the totals further down the screen.
+                        Text(if (discount > 0) "Applied" else "Apply")
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))

@@ -43,6 +43,11 @@ class ReplayExecutor(
     private val repo: PocketQaRepository,
     private val policy: PolicyEngine,
 ) {
+    private companion object {
+        const val POLL_MS = 150L
+        const val SETTLE_MS = 400L
+    }
+
     private val scope = CoroutineScope(Dispatchers.Default)
     private val stopSignals = ConcurrentHashMap<String, Boolean>()
     private val jobs = ConcurrentHashMap<String, Job>()
@@ -77,11 +82,17 @@ class ReplayExecutor(
         var failure: JsonObject? = null
 
         emitProgress(runId, -1, steps.size, "Resetting fixture for $packageName…", null)
-        // Real fixture reset is delegated to the target app's URI scheme in v0.
-        launchTarget(packageName)
-        delay(300)
+        // Real fixture reset is delegated to the target app's URI scheme in v0;
+        // CLEAR_TASK gives us a clean start screen in the meantime.
+        launchTarget(packageName, reset = true)
+        if (!awaitForeground(packageName)) {
+            failure = failureObject("target-app-crash",
+                "$packageName did not come to the foreground within 8s.", null)
+            emitProgress(runId, -1, steps.size, "✗ ${failure["summary"]!!.jsonPrimitive.content}", pass = false)
+        }
 
         for ((idx, raw) in steps.withIndex()) {
+            if (failure != null) break
             if (stopSignals[runId] == true) {
                 failure = failureObject("policy-hard-stop", "User pressed Stop before this step.", null)
                 stepResults += simpleStepResult(raw.jsonObject, "skipped", "User stop", null, 0)
@@ -101,6 +112,17 @@ class ReplayExecutor(
             }
 
             // 2) Observe current state via CaptureCoordinator (which owns the service).
+            // If the target lost the foreground (crash, ANR, an interstitial),
+            // say that plainly instead of reporting selector-drift against
+            // whatever screen happens to be in front.
+            val front = CaptureCoordinator.foregroundPackage()
+            if (front != null && front != packageName) {
+                failure = failureObject("target-app-crash",
+                    "$packageName left the foreground before step ${idx + 1} ($front is in front).", null)
+                stepResults += simpleStepResult(step, "fail", failure!!["summary"]!!.jsonPrimitive.content,
+                    "TARGET_LOST_FOREGROUND", elapsedFrom(stepStart))
+                break
+            }
             val snapshot = CaptureCoordinator.snapshotNow(packageName, screenNameFromStep(step))
             if (snapshot == null) {
                 failure = failureObject("permission-capture",
@@ -174,7 +196,7 @@ class ReplayExecutor(
                     "ACTION_REFUSED", elapsedFrom(stepStart), beforeState = snapshot.stateId)
                 break
             }
-            delay(120) // idle window
+            awaitSettled(packageName, screenNameFromStep(step))
 
             // 5) Post-state + assertions.
             val postSnapshot = CaptureCoordinator.snapshotNow(packageName, screenNameFromStep(step))
@@ -349,10 +371,52 @@ class ReplayExecutor(
 
     private fun elapsedFrom(startedAt: Long): Long = System.currentTimeMillis() - startedAt
 
-    private fun launchTarget(packageName: String) {
+    /**
+     * Bring the target app up at its start screen.
+     *
+     * CLEAR_TASK matters: without it the launcher intent resumes whatever task
+     * the app already had, so a replay inherits the screen a previous run (or
+     * the demonstration itself) left behind and step 1 resolves against the
+     * wrong state. A regression test has to control its own starting point.
+     */
+    private fun launchTarget(packageName: String, reset: Boolean = false) {
         val launch = ctx.packageManager.getLaunchIntentForPackage(packageName) ?: return
         launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (reset) launch.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
         ctx.startActivity(launch)
+    }
+
+    /**
+     * Wait until [packageName] actually owns the active window. Replacing a
+     * fixed sleep with a real readiness check is the difference between a run
+     * that is reliable on a cold app and one that races the first frame.
+     */
+    private suspend fun awaitForeground(packageName: String, timeoutMs: Long = 8_000): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            if (CaptureCoordinator.foregroundPackage() == packageName) {
+                delay(SETTLE_MS) // let the first frame lay out before observing
+                return true
+            }
+            delay(POLL_MS)
+        }
+        return CaptureCoordinator.foregroundPackage() == packageName
+    }
+
+    /**
+     * Wait for the UI to stop changing after an action: two consecutive
+     * identical trees, or [timeoutMs]. A tap that navigates needs more than a
+     * fixed 120ms before the next observation is meaningful.
+     */
+    private suspend fun awaitSettled(packageName: String, screenName: String, timeoutMs: Long = 3_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var previous: String? = null
+        while (System.currentTimeMillis() < deadline) {
+            delay(POLL_MS)
+            val current = CaptureCoordinator.snapshotNow(packageName, screenName)?.payload ?: continue
+            if (current == previous) return
+            previous = current
+        }
     }
 
     private fun failureObject(category: String, summary: String, stateId: String?): JsonObject =

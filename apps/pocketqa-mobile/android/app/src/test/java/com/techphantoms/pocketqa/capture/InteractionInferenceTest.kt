@@ -23,9 +23,15 @@ class InteractionInferenceTest {
         id: String, role: String, label: String,
         clickable: Boolean = true, enabled: Boolean = true, visible: Boolean = true,
         checkable: Boolean = false, checked: Boolean? = null, selected: Boolean = false,
+        testId: String? = null,
+        bounds: String? = null,
         fp: String = "$role|${label.lowercase()}",
     ) = """
         {"nodeId":"$id","role":"$role","text":"$label","fingerprint":"$fp",
+         ${if (testId != null) "\"testId\":\"$testId\"," else ""}
+         ${bounds?.split(",")?.let { (x, y, w, h) ->
+             "\"bounds\":{\"x\":$x,\"y\":$y,\"w\":$w,\"h\":$h},"
+         } ?: ""}
          "clickable":$clickable,"enabled":$enabled,"visible":$visible,
          "checkable":$checkable,${if (checked != null) "\"checked\":$checked," else ""}
          "selected":$selected}
@@ -44,9 +50,103 @@ class InteractionInferenceTest {
             node("n_1", "button", "Add"),
             node("n_2", "button", "Cart"),
         )
-        val after = state("Cart", node("n_9", "text", "Wireless Headphones", clickable = false))
+        // The destination has to identify itself in its own content: a Compose
+        // screen reports the class name "View", so the screen name can never
+        // carry this. A real cart screen exposes a cart anchor, and that is what
+        // the signal reads.
+        val after = state("Cart",
+            node("n_8", "container", "", clickable = false, testId = "cart_screen"),
+            node("n_9", "text", "Wireless Headphones", clickable = false),
+        )
 
         val result = InteractionInference.infer(before, after)!!
+        assertEquals("n_2", result.nodeId)
+        assertTrue(result.signals.any { it.contains("destination") })
+    }
+
+    @Test
+    fun `a change reported at a control outweighs its equally plausible siblings`() {
+        // The add-to-cart case. Tapping "Add" updates a badge somewhere else, so
+        // nothing about the button itself changes and every sibling explains the
+        // transition equally well. The platform's window-content-changed source
+        // is the only thing that separates them.
+        val before = state("Products",
+            node("n_1", "button", "Add", fp = "button|add|1"),
+            node("n_2", "button", "Add", fp = "button|add|2"),
+            node("n_3", "button", "Add", fp = "button|add|3"),
+        )
+        val after = state("Products",
+            node("n_1", "button", "Add", fp = "button|add|1"),
+            node("n_2", "button", "Add", fp = "button|add|2"),
+            node("n_3", "button", "Add", fp = "button|add|3"),
+            node("n_7", "text", "Cart (1)", clickable = false),
+        )
+
+        val blind = InteractionInference.infer(before, after)
+        val hinted = InteractionInference.infer(
+            before, after, focusedNodeId = null, changedFingerprints = listOf("button|add|2"),
+        )!!
+
+        assertEquals("n_2", hinted.nodeId)
+        assertTrue(hinted.signals.any { it.contains("platform reported") })
+        // And the hint must be what did it, not an accident of ordering.
+        assertTrue(blind == null || blind.confidence < hinted.confidence)
+    }
+
+    @Test
+    fun `a reported touch decides the target outright`() {
+        // Android 14+ hands an accessibility service the touch coordinates, so
+        // the tapped control stops being a guess. This is the add-to-cart case
+        // that no state-diff signal can resolve: five identical buttons, and the
+        // only thing that changed is a badge somewhere else.
+        val before = state("Products",
+            node("n_1", "button", "Add", fp = "b|1", bounds = "0,0,200,100"),
+            node("n_2", "button", "Add", fp = "b|2", bounds = "0,200,200,100"),
+            node("n_3", "button", "Add", fp = "b|3", bounds = "0,400,200,100"),
+        )
+        val after = state("Products",
+            node("n_1", "button", "Add", fp = "b|1", bounds = "0,0,200,100"),
+            node("n_2", "button", "Add", fp = "b|2", bounds = "0,200,200,100"),
+            node("n_3", "button", "Add", fp = "b|3", bounds = "0,400,200,100"),
+            node("n_7", "text", "Cart (1)", clickable = false, bounds = "0,900,200,50"),
+        )
+
+        val result = InteractionInference.infer(
+            before, after, touch = InteractionInference.Touch(100, 250),
+        )!!
+        assertEquals("n_2", result.nodeId)
+        assertTrue(result.confidence >= InteractionInference.ACCEPT)
+    }
+
+    @Test
+    fun `a touch prefers the control over the card that contains it`() {
+        val before = state("Products",
+            node("n_1", "listItem", "Wireless Headphones", fp = "card|1", bounds = "0,0,400,300"),
+            node("n_2", "button", "Add", fp = "b|1", bounds = "300,200,100,80"),
+        )
+        val after = state("Products", node("n_9", "text", "Cart (1)", clickable = false))
+
+        val result = InteractionInference.infer(
+            before, after, touch = InteractionInference.Touch(340, 240),
+        )!!
+        assertEquals("n_2", result.nodeId)
+    }
+
+    @Test
+    fun `a touch outside every control falls back to the diff signals`() {
+        val before = state("Products",
+            node("n_1", "button", "Add"),
+            node("n_2", "button", "Cart"),
+        )
+        val after = state("Cart",
+            node("n_8", "container", "", clickable = false, testId = "cart_screen"),
+            node("n_9", "text", "Wireless Headphones", clickable = false),
+        )
+
+        // Bounds default to zero here, so nothing contains the point.
+        val result = InteractionInference.infer(
+            before, after, touch = InteractionInference.Touch(5, 5),
+        )!!
         assertEquals("n_2", result.nodeId)
         assertTrue(result.signals.any { it.contains("destination") })
     }

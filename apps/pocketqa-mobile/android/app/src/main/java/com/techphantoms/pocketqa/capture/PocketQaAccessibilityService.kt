@@ -25,14 +25,74 @@ import com.techphantoms.pocketqa.policy.PolicyEngine
  */
 class PocketQaAccessibilityService : AccessibilityService() {
 
+    private companion object {
+        /** Longer than this and it is a long-press, not a tap. */
+        const val TAP_MAX_MS = 600L
+    }
+
     private val handler = Handler(Looper.getMainLooper())
     private val debounce = Runnable { publishStableState() }
     private val policy = PolicyEngine()
     @Volatile private var latestPackage: String? = null
     @Volatile private var latestScreen: String? = null
+    private var downX = 0f
+    private var downY = 0f
+    private var downAt = 0L
+    /** Android's own tap threshold, in pixels for this display. */
+    private val tapSlopPx: Float by lazy {
+        android.view.ViewConfiguration.get(this).scaledTouchSlop.toFloat()
+    }
 
     override fun onServiceConnected() {
         CaptureCoordinator.attach(this)
+        requestTouchObservation()
+    }
+
+    /**
+     * Ask to observe touchscreen motion events (Android 14+).
+     *
+     * This is not touch exploration: input is not intercepted or re-dispatched,
+     * the target app receives every gesture unchanged, and TalkBack-style
+     * behaviour is not enabled. We only learn where a tap landed — which on a
+     * Compose target is the difference between knowing what was tapped and
+     * guessing, since Compose dispatches no click event for a finger tap.
+     */
+    private fun requestTouchObservation() {
+        if (android.os.Build.VERSION.SDK_INT < 34) return
+        runCatching {
+            serviceInfo = serviceInfo?.apply {
+                // Both are required: the flag opts the service into motion
+                // events at all, the source mask says which ones.
+                flags = flags or
+                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_SEND_MOTION_EVENTS
+                setMotionEventSources(android.view.InputDevice.SOURCE_TOUCHSCREEN)
+            }
+        }
+    }
+
+    override fun onMotionEvent(event: android.view.MotionEvent) {
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> {
+                downX = event.rawX
+                downY = event.rawY
+                downAt = event.eventTime
+            }
+            android.view.MotionEvent.ACTION_UP -> {
+                // Only a tap counts. A scroll and a tap both start with a finger
+                // going down; reporting a fling as a tap would attribute a whole
+                // screen of churn to whatever the finger happened to start on,
+                // which is exactly the fabrication the scroll guard exists to
+                // prevent.
+                val slop = kotlin.math.hypot(
+                    (event.rawX - downX).toDouble(), (event.rawY - downY).toDouble(),
+                )
+                val held = event.eventTime - downAt
+                if (slop <= tapSlopPx && held <= TAP_MAX_MS) {
+                    CaptureCoordinator.onTap(event.rawX.toInt(), event.rawY.toInt())
+                }
+            }
+            android.view.MotionEvent.ACTION_CANCEL -> downAt = 0L
+        }
     }
 
     override fun onDestroy() {

@@ -4,7 +4,11 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -16,12 +20,22 @@ import com.techphantoms.pocketqa.demoshop.ui.screens.ProductListScreen
 import com.techphantoms.pocketqa.demoshop.ui.theme.DemoShopTheme
 
 class MainActivity : ComponentActivity() {
+    @OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleDeepLink(intent)
         setContent {
             DemoShopTheme {
-                DemoShopApp()
+                // Surface Compose test tags as resource ids in the accessibility
+                // tree. Every control here already carries a testTag —
+                // "coupon_input", "apply_coupon_button", "add_to_cart_*" — but
+                // Compose keeps them out of the a11y tree unless this is set, so
+                // PocketQA saw nodes with no id, no label and often no text, and
+                // fell back to the weakest possible selector. With this the same
+                // controls resolve on testId at 0.98 instead.
+                Box(modifier = Modifier.semantics { testTagsAsResourceId = true }) {
+                    DemoShopApp()
+                }
             }
         }
     }
@@ -58,7 +72,9 @@ fun DemoShopApp() {
                         cartItems + CartItem(product, 1)
                     }
                 },
-                onNavigateToCart = { navController.navigate("cart") }
+                onNavigateToCart = { navController.navigate("cart") },
+                cartCount = cartItems.sumOf { it.quantity },
+                cartProductIds = cartItems.map { it.product.id }.toSet(),
             )
         }
         composable("cart") {

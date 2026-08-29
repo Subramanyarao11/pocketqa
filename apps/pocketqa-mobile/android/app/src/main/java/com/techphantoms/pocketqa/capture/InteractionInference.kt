@@ -28,6 +28,9 @@ object InteractionInference {
     const val ACCEPT = 0.75
     const val REVIEW = 0.40
 
+    /** Where the finger went down, in screen pixels. */
+    data class Touch(val x: Int, val y: Int)
+
     data class Candidate(val nodeId: String, val score: Double, val signals: List<String>)
 
     data class Attribution(
@@ -49,22 +52,50 @@ object InteractionInference {
         before: JsonObject,
         after: JsonObject,
         focusedNodeId: String? = null,
+        changedFingerprints: List<String> = emptyList(),
+        touch: Touch? = null,
     ): Attribution? {
         val diff = StateDiff.diff(before, after)
         if (diff.isEmpty) return null
+        val before1 = StateDiff.nodesOf(before)
 
-        // A wholesale replacement with the screen name unchanged is a scroll or a
-        // re-render: nothing visible is left to blame and guessing would be
+        // Signal 0 — the touch itself. From Android 14 an accessibility service
+        // can observe touchscreen motion events without taking over input
+        // (AccessibilityService.onMotionEvent), which means on a supported device
+        // the tapped control is not a guess at all: it is whichever interactive
+        // node the finger landed inside. The smallest such node wins, because a
+        // button sits inside a card that also reports as clickable.
+        //
+        // Everything below stays in place: it is what runs on older devices, and
+        // it is what covers a tap the platform did not report.
+        if (touch != null) {
+            val hit = before1
+                .filter { (it.clickable || it.role in INTERACTIVE_ROLES) && it.enabled && it.visible }
+                .filter { it.contains(touch.x, touch.y) }
+                .minByOrNull { it.area }
+            if (hit != null) {
+                return Attribution(
+                    nodeId = hit.nodeId,
+                    label = hit.label.ifBlank { "Unknown target" },
+                    confidence = 0.99,
+                    signals = listOf("the touch landed on this control"),
+                    alternatives = emptyList(),
+                )
+            }
+        }
+
+        // No usable touch. A wholesale replacement with the screen unchanged is a
+        // scroll or a re-render: nothing visible is left to blame and guessing would be
         // fabrication. Churn *with* a screen change is ordinary navigation and
         // must still be attributed — the two look identical by churn alone, which
         // is why the screen name is part of the test.
         if (diff.distance > 0.9 && !diff.screenChanged) return null
 
-        val candidates = StateDiff.nodesOf(before)
+        val candidates = before1
             // Signal 1 — affordance. This is a filter, not a score: a tap lands
             // on something tappable. Everything else scores zero by construction.
             .filter { (it.clickable || it.role in INTERACTIVE_ROLES) && it.enabled && it.visible }
-            .map { node -> score(node, diff, focusedNodeId) }
+            .map { node -> score(node, diff, focusedNodeId, changedFingerprints) }
             .filter { it.score > 0.0 }
             .sortedByDescending { it.score }
 
@@ -76,7 +107,7 @@ object InteractionInference {
         val rivals = candidates.drop(1).count { top.score - it.score < 0.10 }
         val confidence = (top.score - 0.10 * rivals).coerceIn(0.0, 1.0)
 
-        val label = StateDiff.nodesOf(before).firstOrNull { it.nodeId == top.nodeId }?.label.orEmpty()
+        val label = before1.firstOrNull { it.nodeId == top.nodeId }?.label.orEmpty()
         return Attribution(
             nodeId = top.nodeId,
             label = label.ifBlank { "Unknown target" },
@@ -86,6 +117,22 @@ object InteractionInference {
         )
     }
 
+    /** Lowercase alphanumeric slug: "Add to cart" and "add_to_cart" agree. */
+    private fun slugOf(raw: String): String =
+        raw.lowercase().filter { it.isLetterOrDigit() }
+
+    /** Words of a label worth matching on; three characters minimum. */
+    private fun wordsOf(raw: String): List<String> =
+        raw.lowercase().split(Regex("[^a-z0-9]+"))
+            .filter { it.length >= 3 }
+
+    /** Identity tokens a destination node offers: its own label and its id. */
+    private fun destinationNames(node: StateDiff.NodeRef): Set<String> =
+        setOfNotNull(
+            slugOf(node.label).takeIf { it.isNotBlank() },
+            node.testId?.let { slugOf(it) }?.takeIf { it.isNotBlank() },
+        )
+
     private val INTERACTIVE_ROLES = setOf(
         "button", "link", "listItem", "tab", "switch", "checkbox", "radio",
     )
@@ -94,6 +141,7 @@ object InteractionInference {
         node: StateDiff.NodeRef,
         diff: StateDiff.Result,
         focusedNodeId: String?,
+        changedFingerprints: List<String>,
     ): Candidate {
         var total = 0.0
         val signals = mutableListOf<String>()
@@ -108,13 +156,35 @@ object InteractionInference {
         if (changed?.fields?.any { it.field in setOf("label", "enabled", "selected") } == true) {
             total += 0.55; signals += "changed its own state"
         }
-        // Signal 4 — the label names where we ended up. Tapping "Cart" lands on a
-        // screen called "Cart". This is the signal that catches plain navigation,
-        // which is most of what a QA flow does.
-        if (diff.screenChanged && node.label.isNotBlank() &&
-            diff.afterScreen.contains(node.label, ignoreCase = true)
-        ) {
-            total += 0.60; signals += "label matches destination \"${diff.afterScreen}\""
+        // Signal 4 — the label names where we ended up. Tapping "Cart" lands
+        // somewhere that calls itself the cart. This is the signal that catches
+        // plain navigation, which is most of what a QA flow does.
+        //
+        // Matched against what the destination actually *contains* — headings and
+        // stable ids that appeared — rather than against the screen name. The
+        // accessibility event's class name is "View" on every Compose screen, so
+        // the earlier screen-name comparison could never fire.
+        if (diff.screenChanged && node.label.isNotBlank()) {
+            // Word by word, so "Cart (1)" still names the cart. A single slug
+            // over the whole label stops matching the moment a control starts
+            // showing a count.
+            val slugs = wordsOf(node.label)
+            // Three characters minimum: shorter slugs match half the tree.
+            // Only non-interactive arrivals count as destination identity: a
+            // screen is named by its container and its heading, never by another
+            // button. Without this a control that re-rendered could name the
+            // destination after itself — circular, and it produced a confident
+            // wrong answer (the cart's "Remove" claiming the coupon tap).
+            if (slugs.isNotEmpty() && diff.added.any { added ->
+                    !added.clickable &&
+                        added.fingerprint != node.fingerprint &&
+                        destinationNames(added).any { name ->
+                            slugs.any { name == it || name.startsWith(it) }
+                        }
+                }
+            ) {
+                total += 0.60; signals += "destination names \"${node.label}\""
+            }
         }
         // Signal 5 — interactive things that vanished: dismiss buttons, rows that
         // navigated away.
@@ -129,6 +199,15 @@ object InteractionInference {
         // Signal 7 — an explicit focus event, when the platform sent one.
         if (focusedNodeId != null && focusedNodeId == node.nodeId) {
             total += 0.20; signals += "received accessibility focus"
+        }
+        // Signal 8 — the platform told us where the change started. Compose sends
+        // no click event for a finger tap, but it does send window-content-changed
+        // whose source is the affected subtree; the pressed-state change on the
+        // control that was actually touched shows up there. Matched by
+        // fingerprint: a path id from the event's tree names a different node
+        // once the screen has changed, so comparing path ids invents evidence.
+        if (node.fingerprint.isNotBlank() && changedFingerprints.contains(node.fingerprint)) {
+            total += 0.45; signals += "platform reported the change here"
         }
 
         return Candidate(node.nodeId, total.coerceIn(0.0, 1.0), signals)

@@ -610,7 +610,12 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                 // never be reached. The gate is now the confidence band: a
                 // confidently attributed step is reviewable as-is, an uncertain
                 // one carries its alternatives to the human.
-                val needsCorrection = targetNode == null || confidence < 0.75
+                // A node with no addressable anchor cannot be replayed, so the
+                // step must reach a human even when the attribution itself was
+                // confident: knowing *which* control was tapped does not help if
+                // there is no way to find it again.
+                val selector = targetNode?.let { rankSelector(it, beforeState) }
+                val needsCorrection = targetNode == null || selector == null || confidence < 0.75
 
                 add(buildJsonObject {
                     put("id", JsonPrimitive("step_$i"))
@@ -618,7 +623,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                     put("action", ev["action"] ?: JsonPrimitive("tap"))
                     put("label", JsonPrimitive(deriveLabel(ev, targetNode)))
                     ev["input"]?.let { put("input", it) }
-                    if (targetNode != null) put("selector", rankSelector(targetNode, beforeState))
+                    selector?.let { put("selector", it) }
                     attribution?.let { put("attribution", it) }
                     put("assertions", JsonArray(emptyList()))
                     put("beforeStateId", JsonPrimitive(beforeStateId))
@@ -677,7 +682,28 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     }
 
     /** Deterministic selector ranker — mirrors src/domain/selectors.ts. */
-    private fun rankSelector(node: JsonObject, state: JsonObject?): JsonObject {
+    /**
+     * Rank selector strategies for a node, or return null when the node offers
+     * no anchor at all.
+     *
+     * This used to fabricate a primary when nothing matched:
+     *
+     *     put("strategy", "textAndRole")
+     *     put("value", node["role"])      // the ROLE as the VALUE
+     *     put("confidence", 0.1)
+     *
+     * which produced selectors like `textAndRole = "textField"` — matching on the
+     * literal string "textField", which no screen contains. Every replay of a
+     * text input failed with TARGET_NOT_FOUND, and the Failure Detective
+     * reasonably but wrongly called it selector drift.
+     *
+     * A node with no testId, no resourceId, no content description and no text
+     * genuinely cannot be addressed. Saying so sends the step to the review gate,
+     * which is what that gate is for. A confident-looking 10% selector that can
+     * never match is worse than an honest gap: it turns an unreviewable step into
+     * a test that fails forever.
+     */
+    private fun rankSelector(node: JsonObject, state: JsonObject?): JsonObject? {
         val candidates = mutableListOf<JsonObject>()
         fun push(strategy: String, value: String, confidence: Double, reason: String) {
             candidates += buildJsonObject {
@@ -714,12 +740,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         candidates.sortByDescending {
             it["confidence"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
         }
-        val primary = candidates.firstOrNull() ?: buildJsonObject {
-            put("strategy", JsonPrimitive("textAndRole"))
-            put("value", node["role"] ?: JsonPrimitive(""))
-            put("confidence", JsonPrimitive(0.1))
-            put("reason", JsonPrimitive("No stable anchor available."))
-        }
+        val primary = candidates.firstOrNull() ?: return null
         val fallbacks = candidates.drop(1).take(2).filter {
             it["strategy"]?.jsonPrimitive?.contentOrNull != "coordinates"
         }

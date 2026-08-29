@@ -17,7 +17,9 @@ import com.techphantoms.pocketqa.demoshop.data.Product
 @Composable
 fun ProductListScreen(
     onAddToCart: (Product) -> Unit,
-    onNavigateToCart: () -> Unit
+    onNavigateToCart: () -> Unit,
+    cartCount: Int = 0,
+    cartProductIds: Set<String> = emptySet(),
 ) {
     Scaffold(
         topBar = {
@@ -28,7 +30,7 @@ fun ProductListScreen(
                         onClick = onNavigateToCart,
                         modifier = Modifier.testTag("cart_button")
                     ) {
-                        Text("Cart")
+                        Text(if (cartCount > 0) "Cart ($cartCount)" else "Cart")
                     }
                 }
             )
@@ -40,14 +42,18 @@ fun ProductListScreen(
             modifier = Modifier.testTag("product_list")
         ) {
             items(Fixtures.products) { product ->
-                ProductCard(product = product, onAddToCart = { onAddToCart(product) })
+                ProductCard(
+                    product = product,
+                    onAddToCart = { onAddToCart(product) },
+                    inCart = product.id in cartProductIds,
+                )
             }
         }
     }
 }
 
 @Composable
-private fun ProductCard(product: Product, onAddToCart: () -> Unit) {
+private fun ProductCard(product: Product, onAddToCart: () -> Unit, inCart: Boolean = false) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -82,7 +88,10 @@ private fun ProductCard(product: Product, onAddToCart: () -> Unit) {
                 onClick = onAddToCart,
                 modifier = Modifier.testTag("add_to_cart_${product.id}")
             ) {
-                Text("Add")
+                // Confirming the tap on the control that was tapped. A button
+                // that looks identical before and after leaves the shopper
+                // guessing whether it worked.
+                Text(if (inCart) "Added" else "Add")
             }
         }
     }

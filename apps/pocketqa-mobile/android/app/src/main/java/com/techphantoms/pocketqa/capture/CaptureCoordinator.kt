@@ -61,6 +61,18 @@ class CaptureCoordinator(
         )
 
         fun onEvent(event: AccessibilityEvent, root: AccessibilityNodeInfo?) {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                // Not an interaction, and far too noisy to treat as one — but the
+                // source names the subtree that changed, which is the closest
+                // thing Compose gives us to "what was touched". Kept as a bounded
+                // ring of hints for inference to weigh (signal 8).
+                UiTreeCapture.fingerprintOf(event.source)?.let { fp ->
+                    changedSources.remove(fp)
+                    changedSources += fp
+                    while (changedSources.size > MAX_CHANGE_HINTS) changedSources.removeAt(0)
+                }
+                return
+            }
             if (event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED) {
                 // Not an interaction on its own, but a strong tiebreak for
                 // inference when the platform bothers to send it.
@@ -147,6 +159,11 @@ class CaptureCoordinator(
             } else {
                 pendingEvents.clear()
             }
+            // Hints describe the interaction that just settled; carrying them
+            // into the next window would blame the wrong control.
+            changedSources.clear()
+            lastFocusedNodeId = null
+            lastTouch = null
             stateSink?.invoke(snapshot)
         }
 
@@ -158,7 +175,9 @@ class CaptureCoordinator(
                     ?: return null
                 val after = json.parseToJsonElement(afterPayload) as? kotlinx.serialization.json.JsonObject
                     ?: return null
-                val attribution = InteractionInference.infer(before, after, lastFocusedNodeId)
+                val attribution = InteractionInference.infer(
+                    before, after, lastFocusedNodeId, changedSources.toList(), lastTouch,
+                )
                     ?: return null
                 // Below REVIEW we still record the step: the operator did something
                 // and a silently missing step is worse than one marked unresolved.
@@ -182,6 +201,20 @@ class CaptureCoordinator(
         @Volatile
         private var lastFocusedNodeId: String? = null
 
+        /**
+         * Where the last touch went down, if the platform reported one. Cleared
+         * with every stable state so a tap is never blamed on an older gesture.
+         */
+        @Volatile private var lastTouch: InteractionInference.Touch? = null
+
+        fun onTap(x: Int, y: Int) {
+            lastTouch = InteractionInference.Touch(x, y)
+        }
+
+        /** Fingerprints of recent window-content-changed sources, newest last. */
+        private val changedSources = mutableListOf<String>()
+        private const val MAX_CHANGE_HINTS = 8
+
         @Volatile
         private var pendingEventsSink: ((PendingEvent, before: String, after: String) -> Unit)? = null
 
@@ -194,6 +227,15 @@ class CaptureCoordinator(
          * than waiting for the next debounced state.  Returns null when no
          * accessibility service is connected.
          */
+        /**
+         * Package that currently owns the active window, or null when the
+         * service is not connected. Replay uses this to confirm the target app
+         * is actually in front before it observes state — without it a run can
+         * resolve selectors against whatever screen happened to be showing.
+         */
+        fun foregroundPackage(): String? =
+            service.get()?.rootInActiveWindow?.packageName?.toString()
+
         fun snapshotNow(packageName: String, screenName: String): UiTreeCapture.Snapshot? {
             val svc = service.get() ?: return null
             val root = svc.rootInActiveWindow ?: return null

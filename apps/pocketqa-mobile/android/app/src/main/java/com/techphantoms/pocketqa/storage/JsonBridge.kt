@@ -74,6 +74,12 @@ object JsonBridge {
     }
 
     private fun putPrimitive(out: WritableMap, k: String, v: JsonPrimitive) {
+        // A quoted JSON value stays a string. kotlinx's intOrNull/doubleOrNull
+        // parse the *content* regardless of how it was encoded, so without this
+        // check the string "7" crossed the bridge as a number and came back
+        // "7.0" — which made every numeric label unmatchable on replay, and
+        // would equally corrupt a coupon code, a quantity or an OTP.
+        if (v.isString) { out.putString(k, v.content); return }
         val b = v.booleanOrNull; if (b != null) { out.putBoolean(k, b); return }
         val i = v.intOrNull;     if (i != null) { out.putInt(k, i); return }
         val l = v.longOrNull;    if (l != null) { out.putDouble(k, l.toDouble()); return }
@@ -82,6 +88,7 @@ object JsonBridge {
     }
 
     private fun pushPrimitive(out: WritableArray, v: JsonPrimitive) {
+        if (v.isString) { out.pushString(v.content); return }
         val b = v.booleanOrNull; if (b != null) { out.pushBoolean(b); return }
         val i = v.intOrNull;     if (i != null) { out.pushInt(i); return }
         val l = v.longOrNull;    if (l != null) { out.pushDouble(l.toDouble()); return }

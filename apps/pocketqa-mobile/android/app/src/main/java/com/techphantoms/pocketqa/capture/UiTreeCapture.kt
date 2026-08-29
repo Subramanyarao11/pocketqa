@@ -8,7 +8,10 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonPrimitive
 import java.security.MessageDigest
 
 /**
@@ -42,7 +45,7 @@ object UiTreeCapture {
     ): Snapshot {
         val nodes = mutableListOf<JsonObject>()
         val ocr = mutableListOf<String>()
-        traverse(root, "n", nodes, ocr, depth = 0)
+        traverse(root, "n", nodes, ocr, depth = 0, inScrollable = false)
         val nodesArr = buildJsonArray { for (n in nodes) add(n) }
         val ocrArr = buildJsonArray { for (line in ocr.take(24)) add(JsonPrimitive(line)) }
         val stateId = "state_" + hash("$packageName:$screenName:${nodesArr}")
@@ -50,6 +53,11 @@ object UiTreeCapture {
             put("id", JsonPrimitive(stateId))
             put("packageName", JsonPrimitive(packageName))
             put("screenName", JsonPrimitive(screenName))
+            // Identity of the screen, derived from the tree itself. The
+            // accessibility event's class name is useless here: a single-Activity
+            // Compose app reports the same class on every screen, so anything
+            // keyed off `screenName` cannot tell navigation from a repaint.
+            put("screenSignature", JsonPrimitive(screenSignature(nodes)))
             put("capturedAt", JsonPrimitive(capturedAt))
             put("ocrText", ocrArr)
             put("nodes", nodesArr)
@@ -62,12 +70,37 @@ object UiTreeCapture {
         return Snapshot(stateId, payload.toString())
     }
 
+    /**
+     * Structural identity of a screen: the stable chrome, ignoring anything
+     * inside a scrollable container and ignoring free text.
+     *
+     * Built from stable ids only. Text is excluded deliberately: a total that
+     * recalculates, a badge that increments and a row that appears are all the
+     * same screen, and treating them as navigation let a control on the current
+     * screen "name the destination" after itself. Navigating swaps the ids
+     * wholesale, which is the distinction interaction inference needs.
+     *
+     * An app that exposes no ids yields an empty signature, and the caller falls
+     * back to the screen name.
+     */
+    private fun screenSignature(nodes: List<JsonObject>): String {
+        val anchors = nodes.asSequence()
+            .mapNotNull { n ->
+                n["testId"]?.jsonPrimitive?.contentOrNull
+                    ?: n["resourceId"]?.jsonPrimitive?.contentOrNull?.substringAfterLast('/')
+            }
+            .filter { it.isNotBlank() }
+            .toSortedSet()
+        return if (anchors.isEmpty()) "" else hash(anchors.joinToString("|")).take(12)
+    }
+
     private fun traverse(
         node: AccessibilityNodeInfo?,
         pathId: String,
         nodes: MutableList<JsonObject>,
         ocr: MutableList<String>,
         depth: Int,
+        inScrollable: Boolean,
     ) {
         if (node == null) return
         if (nodes.size >= MAX_NODES || depth > 32) return
@@ -76,6 +109,15 @@ object UiTreeCapture {
         val resourceId = node.viewIdResourceName
         val testId = extractTestId(node)
         val role = classifyRole(node)
+        // A Compose Button carries no text of its own — the label sits in a child
+        // Text node. Every label-based rule (step naming, textAndRole selectors,
+        // the destination signal in inference) sees an empty string without this,
+        // which is why buttons compiled as "Tap element" with no usable name.
+        // Composing a name from descendants is what the platform itself does when
+        // it announces a control.
+        val derivedName = if (text.isNullOrBlank() && contentDescription.isNullOrBlank()) {
+            subtreeName(node)
+        } else null
         val sensitive = policy.isSensitive(text) ||
             policy.isSensitive(contentDescription) ||
             role in listOf("passwordField", "otpField", "pinField")
@@ -87,6 +129,7 @@ object UiTreeCapture {
             if (!sensitive && !contentDescription.isNullOrEmpty()) put("contentDescription", JsonPrimitive(contentDescription))
             if (!resourceId.isNullOrEmpty()) put("resourceId", JsonPrimitive(resourceId))
             if (!testId.isNullOrEmpty()) put("testId", JsonPrimitive(testId))
+            if (!sensitive && !derivedName.isNullOrBlank()) put("name", JsonPrimitive(derivedName))
             put("enabled", JsonPrimitive(node.isEnabled))
             put("visible", JsonPrimitive(node.isVisibleToUser))
             put("sensitive", JsonPrimitive(sensitive))
@@ -101,11 +144,13 @@ object UiTreeCapture {
             if (node.isCheckable) put("checked", JsonPrimitive(node.isChecked))
             put("selected", JsonPrimitive(node.isSelected))
             put("scrollable", JsonPrimitive(node.isScrollable))
+            put("inScrollable", JsonPrimitive(inScrollable))
             put("editable", JsonPrimitive(node.isEditable))
             // Path ids (n_0_0_1) shift when a sibling is inserted, so they cannot
             // match a node across two trees. This is stable under sibling churn:
             // identity comes from what the node *is*, not where it sits.
-            put("fingerprint", JsonPrimitive(nodeFingerprint(role, text, contentDescription, resourceId, bounds)))
+            put("fingerprint", JsonPrimitive(
+                nodeFingerprint(role, text ?: derivedName, contentDescription, resourceId, bounds)))
             put("bounds", buildJsonObject {
                 put("x", JsonPrimitive(bounds.left))
                 put("y", JsonPrimitive(bounds.top))
@@ -116,8 +161,47 @@ object UiTreeCapture {
         nodes += entry
         if (!sensitive) text?.takeIf { it.isNotBlank() }?.let { ocr += it }
         for (i in 0 until node.childCount) {
-            traverse(node.getChild(i), "${pathId}_$i", nodes, ocr, depth + 1)
+            traverse(node.getChild(i), "${pathId}_$i", nodes, ocr, depth + 1,
+                inScrollable = inScrollable || node.isScrollable)
         }
+    }
+
+    /**
+     * The accessible name a control inherits from its own subtree.
+     *
+     * Bounded deliberately: two levels and two text nodes. A whole card would
+     * otherwise be named after its price, its badge and its description, which
+     * is worse than no name at all.
+     */
+    private fun subtreeName(node: AccessibilityNodeInfo, depth: Int = 0): String? {
+        if (depth > 2) return null
+        val parts = mutableListOf<String>()
+        for (i in 0 until node.childCount) {
+            val child = node.getChild(i) ?: continue
+            val own = child.text?.toString()?.takeIf { it.isNotBlank() }
+                ?: child.contentDescription?.toString()?.takeIf { it.isNotBlank() }
+            val name = own ?: subtreeName(child, depth + 1)
+            if (!name.isNullOrBlank()) parts += name.trim()
+            if (parts.size >= 2) break
+        }
+        return parts.joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * Fingerprint of a live node, so a signal observed at event time can be
+     * matched against a captured tree. Path ids cannot do this: they index one
+     * particular tree, and after a navigation the same path names an unrelated
+     * node — which turns a hint into a false accusation.
+     */
+    fun fingerprintOf(node: AccessibilityNodeInfo?): String? {
+        node ?: return null
+        val bounds = Rect().also { node.getBoundsInScreen(it) }
+        val text = node.text?.toString()
+        val cd = node.contentDescription?.toString()
+        val name = if (text.isNullOrBlank() && cd.isNullOrBlank()) subtreeName(node) else null
+        return nodeFingerprint(
+            classifyRole(node), text ?: name, cd, node.viewIdResourceName, bounds,
+        )
     }
 
     /**
@@ -137,10 +221,16 @@ object UiTreeCapture {
     ): String {
         val label = (text ?: contentDescription ?: "").trim().lowercase()
         val id = resourceId?.substringAfterLast('/') ?: ""
+        // A control with a stable id is identified by that id alone. Folding its
+        // label in would make "Add" and "Added" two different nodes, so a button
+        // that reacted to being pressed would read as one control vanishing and
+        // another appearing — destroying the very signal that says which control
+        // was pressed.
+        if (id.isNotEmpty()) return hash("$role|$id").take(12)
         // ~10% buckets: tolerant of layout shift, intolerant of a different slot.
         val bucketX = if (bounds.width() > 0) bounds.centerX() / 108 else 0
         val bucketY = if (bounds.height() > 0) bounds.centerY() / 240 else 0
-        return hash("$role|$label|$id|$bucketX,$bucketY").take(12)
+        return hash("$role|$label|$bucketX,$bucketY").take(12)
     }
 
     private fun extractTestId(node: AccessibilityNodeInfo): String? {
