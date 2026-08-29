@@ -18,10 +18,11 @@ New contributors should read these in order:
 
 1. [Mac Setup and New Developer Guide](PocketQA_Mac_Setup_and_New_Developer_Guide.md)
 2. [Product Requirements Document](PocketQA_PRD.md)
-3. [Technical Specification](PocketQA_Technical_Spec.md)
-4. [Agentic AI Backlog](PocketQA_Agentic_AI_Backlog.md)
-5. [AI Track A — Reasoning, Prompts and Evaluation](PocketQA_AI_Track_A_Reasoning.md)
-6. [AI Track B — Platform, Data and Integration](PocketQA_AI_Track_B_Platform.md)
+3. [React Native App Build Specification](PocketQA_React_Native_Build_Spec.md)
+4. [Technical Specification](PocketQA_Technical_Spec.md)
+5. [Agentic AI Backlog](PocketQA_Agentic_AI_Backlog.md)
+6. [AI Track A — Reasoning, Prompts and Evaluation](PocketQA_AI_Track_A_Reasoning.md)
+7. [AI Track B — Platform, Data and Integration](PocketQA_AI_Track_B_Platform.md)
 
 Hackathon and pitch material:
 
@@ -190,6 +191,7 @@ This is a private hackathon repository. Teammates should be invited as collabora
 ## Product documents
 
 - [PocketQA PRD](PocketQA_PRD.md)
+- [PocketQA React Native App Build Specification](PocketQA_React_Native_Build_Spec.md)
 - [PocketQA Technical Specification](PocketQA_Technical_Spec.md)
 - [PocketQA Mac Setup and New Developer Guide](PocketQA_Mac_Setup_and_New_Developer_Guide.md)
 - [PocketQA Agentic AI Backlog](PocketQA_Agentic_AI_Backlog.md)
