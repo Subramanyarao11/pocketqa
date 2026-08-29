@@ -38,11 +38,17 @@ async def test_deterministic_always_ready(client: AsyncClient):
 
 
 async def test_openai_unavailable_without_key(client: AsyncClient):
-    from pydantic import SecretStr
+    """`settings` is a factory, not a module-level object, so patch what it
+    returns. Building a real Settings with no key keeps this test honest: a
+    MagicMock would report READY simply because every attribute is truthy."""
+    from dataclasses import replace
 
-    with patch("app.main.settings") as mock_settings:
-        mock_settings.openai_api_key = SecretStr("")
-        mock_settings.pocketqa_llm_model = ""
-        resp = await client.get("/health")
-        data = resp.json()
+    from app.config import settings as real_settings
+
+    without_key = replace(real_settings(), api_key=None)
+    with patch("app.main.settings", return_value=without_key):
+        data = (await client.get("/health")).json()
         assert data["engines"]["openai"] == "UNAVAILABLE"
+        assert data["model"] is None
+        # The deterministic engine never depends on a key. That is the point.
+        assert data["engines"]["deterministic"] == "READY"

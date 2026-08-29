@@ -68,6 +68,9 @@ provider-credentials/
 *.evidence.zip
 *.support.zip
 
+# Patches
+pocketqa-patches/
+
 # Temporary files
 tmp/
 temp/

@@ -1,24 +1,35 @@
+"""FastAPI entrypoint — Track B task AI-B-01.
+
+Originally written against a pydantic-settings `settings` object. Adapted to the
+`app.config.settings()` factory that Track A's engines already use, so the two
+tracks share one configuration source rather than two that drift.
+
+`Settings.describe()` exists precisely for this route: it reports configuration
+without ever including the key.
+"""
+
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
 from app.config import settings
+from app.engines.deterministic import DeterministicInferenceEngine
+from app.prompts import versions as prompt_versions
+from app.tasks import all_tasks
 
 logger = logging.getLogger("pocketqa")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    config = settings()
     logging.basicConfig(
-        level=settings.pocketqa_log_level.upper(),
+        level=config.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s — %(message)s",
     )
-    logger.info(
-        "ai-lab starting env=%s model=%s",
-        settings.pocketqa_env,
-        settings.pocketqa_llm_model or "(not set)",
-    )
+    # Never log the key itself; describe() is safe by construction.
+    logger.info("ai-lab starting env=%s config=%s", config.env, config.describe())
     yield
 
 
@@ -27,14 +38,19 @@ app = FastAPI(title="PocketQA AI Lab", lifespan=lifespan)
 
 @app.get("/health")
 async def health() -> dict:
-    openai_key = settings.openai_api_key.get_secret_value()
-    openai_status = "READY" if openai_key else "UNAVAILABLE"
-
+    config = settings()
     return {
         "engines": {
-            "openai": openai_status,
-            "deterministic": "READY",
+            # Named "openai" for the connected tier regardless of which
+            # OpenAI-compatible provider is configured.
+            "openai": "READY" if config.configured else "UNAVAILABLE",
+            "deterministic": str(DeterministicInferenceEngine().status()),
         },
-        "model": settings.pocketqa_llm_model or None,
-        "promptVersions": {},
+        "model": config.ceiling_model if config.configured else None,
+        "promptVersions": {
+            task_id: spec.prompt_version for task_id, spec in sorted(all_tasks().items())
+        },
+        "availablePromptVersions": prompt_versions(),
+        "tasks": sorted(all_tasks()),
+        "config": config.describe(),
     }

@@ -50,6 +50,8 @@ class Settings:
     max_retries: int
     max_output_tokens: int
     response_mode: str
+    env: str
+    log_level: str
 
     @property
     def configured(self) -> bool:
@@ -66,6 +68,7 @@ class Settings:
             "maxRetries": self.max_retries,
             "maxOutputTokens": self.max_output_tokens,
             "responseMode": self.response_mode,
+            "env": self.env,
         }
 
 
@@ -87,4 +90,6 @@ def settings() -> Settings:
         # is the right default: provider-enforced grammars are stricter but some
         # small models degenerate inside them.
         response_mode=os.environ.get("POCKETQA_RESPONSE_MODE") or "auto",
+        env=os.environ.get("POCKETQA_ENV") or "local",
+        log_level=os.environ.get("POCKETQA_LOG_LEVEL") or "INFO",
     )
