@@ -41,7 +41,10 @@ export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureRe
         <PrimaryButton
           label="Start demonstration"
           onPress={async () => {
-            const { sessionId } = await PocketQaNative.startCapture({ intentId: route.params.intentId, fixture: "coupon-retry" });
+            // The selected fixture is persisted with the intent. Native resolves
+            // it here so this screen cannot silently replace the operator's
+            // choice with a Demo Shop-specific hardcoded value.
+            const { sessionId } = await PocketQaNative.startCapture({ intentId: route.params.intentId });
             navigation.replace("CaptureStatus", { sessionId });
           }}
         />

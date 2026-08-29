@@ -241,7 +241,12 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
         {visibleApps.map((app) => (
           <TouchableOpacity
             key={app.packageName}
-            onPress={() => setPkg(app.packageName)}
+            onPress={() => {
+              setPkg(app.packageName);
+              if (!app.fixtureIds.includes(fixture)) {
+                setFixture(app.fixtureIds[0] ?? "reset");
+              }
+            }}
             accessibilityRole="radio"
             accessibilityState={{ selected: pkg === app.packageName }}
           >

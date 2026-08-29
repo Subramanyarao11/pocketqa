@@ -59,12 +59,13 @@ object InteractionInference {
         if (diff.isEmpty) return null
         val before1 = StateDiff.nodesOf(before)
 
-        // Signal 0 — the touch itself. From Android 14 an accessibility service
-        // can observe touchscreen motion events without taking over input
-        // (AccessibilityService.onMotionEvent), which means on a supported device
-        // the tapped control is not a guess at all: it is whichever interactive
-        // node the finger landed inside. The smallest such node wins, because a
-        // button sits inside a card that also reports as clickable.
+        // Signal 0 — an optional touch supplied by an instrumentation or OEM
+        // backend. The AccessibilityService backend deliberately does not source
+        // this from AccessibilityService.onMotionEvent: Android withholds a
+        // registered motion source from the rest of the system, which consumes
+        // the operator's physical touchscreen input. When a safe backend supplies
+        // a point, the smallest interactive node under it wins because a button
+        // may sit inside a card that also reports as clickable.
         //
         // Everything below stays in place: it is what runs on older devices, and
         // it is what covers a tap the platform did not report.

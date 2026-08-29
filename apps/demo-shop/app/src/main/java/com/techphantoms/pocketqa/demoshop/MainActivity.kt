@@ -42,12 +42,19 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handleDeepLink(intent)
+        // A fixture is a complete deterministic reset, including Compose-local
+        // navigation/cart state. Recreate rather than mutating only globals under
+        // an already-running composition.
+        recreate()
     }
 
     private fun handleDeepLink(intent: Intent?) {
         if (intent?.data?.host == "reset") {
-            Fixtures.reset()
+            Fixtures.configure(intent.data?.getQueryParameter("fixture"))
+        } else {
+            Fixtures.configure("reset")
         }
     }
 }
@@ -96,6 +103,7 @@ fun DemoShopApp() {
             val total = subtotal - (subtotal * discount / 100)
             CheckoutScreen(
                 total = total,
+                couponApplied = discount > 0,
                 onConfirm = {
                     cartItems = emptyList()
                     discount = 0

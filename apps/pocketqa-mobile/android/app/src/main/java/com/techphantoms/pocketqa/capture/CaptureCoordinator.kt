@@ -5,11 +5,13 @@ import android.content.Intent
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.compiler.CompileCoordinator
+import com.techphantoms.pocketqa.policy.FixtureLauncher
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.PocketQaRepository
 import java.util.concurrent.atomic.AtomicReference
@@ -27,6 +29,21 @@ class CaptureCoordinator(
     private val repo: PocketQaRepository,
     private val policy: PolicyEngine,
 ) {
+    /**
+     * Why an observation failed. "The service is gone" and "nothing is
+     * readable this instant" demand opposite responses — the first is
+     * terminal and the operator must act, the second is routine and clears
+     * on its own — and collapsing both into a null taught replay to abort a
+     * healthy run with "accessibility service unavailable".
+     */
+    sealed class Observation {
+        data class Ok(val snapshot: UiTreeCapture.Snapshot) : Observation()
+        /** The service is not connected. Terminal; needs the operator. */
+        object ServiceUnavailable : Observation()
+        /** Connected, but no window belonging to the target is readable yet. */
+        object NoWindow : Observation()
+    }
+
     companion object {
         private val service = AtomicReference<PocketQaAccessibilityService?>(null)
         private val activePackage = AtomicReference<String?>(null)
@@ -163,7 +180,6 @@ class CaptureCoordinator(
             // into the next window would blame the wrong control.
             changedSources.clear()
             lastFocusedNodeId = null
-            lastTouch = null
             stateSink?.invoke(snapshot)
         }
 
@@ -176,7 +192,7 @@ class CaptureCoordinator(
                 val after = json.parseToJsonElement(afterPayload) as? kotlinx.serialization.json.JsonObject
                     ?: return null
                 val attribution = InteractionInference.infer(
-                    before, after, lastFocusedNodeId, changedSources.toList(), lastTouch,
+                    before, after, lastFocusedNodeId, changedSources.toList(),
                 )
                     ?: return null
                 // Below REVIEW we still record the step: the operator did something
@@ -200,16 +216,6 @@ class CaptureCoordinator(
 
         @Volatile
         private var lastFocusedNodeId: String? = null
-
-        /**
-         * Where the last touch went down, if the platform reported one. Cleared
-         * with every stable state so a tap is never blamed on an older gesture.
-         */
-        @Volatile private var lastTouch: InteractionInference.Touch? = null
-
-        fun onTap(x: Int, y: Int) {
-            lastTouch = InteractionInference.Touch(x, y)
-        }
 
         /** Fingerprints of recent window-content-changed sources, newest last. */
         private val changedSources = mutableListOf<String>()
@@ -236,37 +242,101 @@ class CaptureCoordinator(
         fun foregroundPackage(): String? =
             service.get()?.rootInActiveWindow?.packageName?.toString()
 
-        fun snapshotNow(packageName: String, screenName: String): UiTreeCapture.Snapshot? {
-            val svc = service.get() ?: return null
-            val root = svc.rootInActiveWindow ?: return null
+        /**
+         * Is [packageName] on screen?
+         *
+         * Not the same question as "does it own the active window". A soft
+         * keyboard, a toast or a system dialog takes the active window while the
+         * app underneath is still very much present, and during a transition
+         * nothing owns it at all. Asking `foregroundPackage() == target` in
+         * those moments answers "no" about an app the user can plainly see, and
+         * replay then aborts a healthy run.
+         */
+        fun isOnScreen(packageName: String): Boolean {
+            val svc = service.get() ?: return false
+            if (svc.rootInActiveWindow?.packageName?.toString() == packageName) return true
+            return runCatching {
+                svc.windows.any { it.root?.packageName?.toString() == packageName }
+            }.getOrDefault(false)
+        }
+
+        fun observe(packageName: String, screenName: String): Observation {
+            val svc = service.get() ?: return Observation.ServiceUnavailable
+            val root = rootFor(svc, packageName) ?: return Observation.NoWindow
             val m = svc.resources.displayMetrics
-            return UiTreeCapture.snapshot(
-                root, packageName, screenName, System.currentTimeMillis(),
-                UiTreeCapture.Display(m.widthPixels, m.heightPixels, m.density),
+            return Observation.Ok(
+                UiTreeCapture.snapshot(
+                    root, packageName, screenName, System.currentTimeMillis(),
+                    UiTreeCapture.Display(m.widthPixels, m.heightPixels, m.density),
+                )
             )
         }
+
+        /**
+         * The target's own window root.
+         *
+         * `rootInActiveWindow` is whichever window currently has focus, which
+         * after a typeText step is the soft keyboard, and during a transition is
+         * nothing at all. Asking the window list for the target's window instead
+         * is what makes observation survive both.
+         *
+         * A root belonging to some other package is never returned: observing
+         * the keyboard's tree and calling it the app's state would produce a
+         * confident wrong answer, which is worse than waiting.
+         */
+        private fun rootFor(
+            svc: PocketQaAccessibilityService,
+            packageName: String,
+        ): AccessibilityNodeInfo? {
+            svc.rootInActiveWindow?.let {
+                if (it.packageName?.toString() == packageName) return it
+            }
+            return runCatching {
+                svc.windows.asSequence()
+                    .mapNotNull { it.root }
+                    .firstOrNull { it.packageName?.toString() == packageName }
+            }.getOrNull()
+        }
+
+        fun snapshotNow(packageName: String, screenName: String): UiTreeCapture.Snapshot? =
+            (observe(packageName, screenName) as? Observation.Ok)?.snapshot
 
         /**
          * Find a node by `nodeId` and perform a click. Returns true on success.
          * `nodeId` is the path index we assigned during tree traversal.
          */
-        fun performClick(nodeId: String): Boolean {
+        /**
+         * The tree a dispatch should act on.
+         *
+         * Path ids are relative to the tree we observed, which is the target's
+         * own window. `rootInActiveWindow` is a different window the moment the
+         * soft keyboard opens, so resolving a path id against it searches the
+         * keyboard for a button that was never there — and the step is reported
+         * as a refused action rather than as looking in the wrong place.
+         */
+        private fun dispatchRoot(
+            svc: PocketQaAccessibilityService,
+            packageName: String?,
+        ): AccessibilityNodeInfo? =
+            if (packageName != null) rootFor(svc, packageName) else svc.rootInActiveWindow
+
+        fun performClick(nodeId: String, packageName: String? = null): Boolean {
             val svc = service.get() ?: return false
-            val root = svc.rootInActiveWindow ?: return false
+            val root = dispatchRoot(svc, packageName) ?: return false
             val node = findByPathId(root, nodeId, "n") ?: return false
             return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK)
         }
 
-        fun performLongPress(nodeId: String): Boolean {
+        fun performLongPress(nodeId: String, packageName: String? = null): Boolean {
             val svc = service.get() ?: return false
-            val root = svc.rootInActiveWindow ?: return false
+            val root = dispatchRoot(svc, packageName) ?: return false
             val node = findByPathId(root, nodeId, "n") ?: return false
             return node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_LONG_CLICK)
         }
 
-        fun performTypeText(nodeId: String, value: String): Boolean {
+        fun performTypeText(nodeId: String, value: String, packageName: String? = null): Boolean {
             val svc = service.get() ?: return false
-            val root = svc.rootInActiveWindow ?: return false
+            val root = dispatchRoot(svc, packageName) ?: return false
             val node = findByPathId(root, nodeId, "n") ?: return false
             val args = android.os.Bundle().apply {
                 putCharSequence(
@@ -277,6 +347,30 @@ class CaptureCoordinator(
             return node.performAction(
                 android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,
                 args,
+            )
+        }
+
+        /**
+         * Close the soft keyboard, but only when one is actually up.
+         *
+         * A keyboard left open after a text-entry step covers the bottom of the
+         * screen, and the controls under it report `visible = false` — so the
+         * next step cannot resolve a target that is present and perfectly
+         * healthy. A person types and then dismisses; a replay has to do the
+         * same or it is not reproducing the demonstration.
+         *
+         * Guarded on an input-method window actually existing, because BACK with
+         * no keyboard showing navigates instead, which would silently leave the
+         * app one screen away from where the test expects to be.
+         */
+        fun dismissKeyboardIfShowing(): Boolean {
+            val svc = service.get() ?: return false
+            val showing = runCatching {
+                svc.windows.any { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
+            }.getOrDefault(false)
+            if (!showing) return false
+            return svc.performGlobalAction(
+                android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK
             )
         }
 
@@ -352,7 +446,7 @@ class CaptureCoordinator(
                 alternatives = pending.alternatives,
             )
         }
-        if (!launchTargetApp(session.packageName)) {
+        if (!launchTargetApp(session.packageName, session.fixture)) {
             // Unwind: a session that never reaches the target app records
             // nothing, and leaving it "Recording" holds the operation lock.
             activePackage.set(null)
@@ -507,13 +601,17 @@ class CaptureCoordinator(
      * Returns false when the target could not be brought forward, so the caller
      * can fail the session instead of recording nothing.
      */
-    private fun launchTargetApp(pkg: String): Boolean {
-        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)
+    private fun launchTargetApp(pkg: String, fixture: String?): Boolean {
+        val launch = FixtureLauncher.targetIntent(
+            context = ctx,
+            packageName = pkg,
+            fixture = fixture,
+            resetTask = fixture != null,
+        )
         if (launch == null) {
-            android.util.Log.w("PocketQaCapture", "no launch intent for $pkg")
+            android.util.Log.w("PocketQaCapture", "no launch or fixture intent for $pkg")
             return false
         }
-        launch.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
         return try {
             val activity = ctx.currentActivity
             if (activity != null) {

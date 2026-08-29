@@ -1,10 +1,10 @@
 package com.techphantoms.pocketqa.capture
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
-import android.view.accessibility.AccessibilityNodeInfo
 import com.techphantoms.pocketqa.policy.PolicyEngine
 
 /**
@@ -24,74 +24,38 @@ import com.techphantoms.pocketqa.policy.PolicyEngine
  *     transitions produces exactly one persisted UIState per stable frame.
  */
 class PocketQaAccessibilityService : AccessibilityService() {
-
-    private companion object {
-        /** Longer than this and it is a long-press, not a tap. */
-        const val TAP_MAX_MS = 600L
-    }
-
     private val handler = Handler(Looper.getMainLooper())
     private val debounce = Runnable { publishStableState() }
     private val policy = PolicyEngine()
     @Volatile private var latestPackage: String? = null
     @Volatile private var latestScreen: String? = null
-    private var downX = 0f
-    private var downY = 0f
-    private var downAt = 0L
-    /** Android's own tap threshold, in pixels for this display. */
-    private val tapSlopPx: Float by lazy {
-        android.view.ViewConfiguration.get(this).scaledTouchSlop.toFloat()
-    }
 
     override fun onServiceConnected() {
         CaptureCoordinator.attach(this)
-        requestTouchObservation()
+        configurePassiveInputObservation()
     }
 
     /**
-     * Ask to observe touchscreen motion events (Android 14+).
+     * Keep touchscreen input owned by the target app.
      *
-     * This is not touch exploration: input is not intercepted or re-dispatched,
-     * the target app receives every gesture unchanged, and TalkBack-style
-     * behaviour is not enabled. We only learn where a tap landed — which on a
-     * Compose target is the difference between knowing what was tapped and
-     * guessing, since Compose dispatches no click event for a finger tap.
+     * Android 14's AccessibilityService.onMotionEvent API is not a passive tap
+     * observer: events from sources registered with setMotionEventSources are
+     * withheld from the rest of the system. Registering SOURCE_TOUCHSCREEN made
+     * the service consume every physical gesture on Android 16/iQOO.
+     *
+     * Explicitly clear both the source mask and the related flag. Clearing at
+     * connection time also repairs an already-enabled service after an APK
+     * upgrade where the previous process had installed the unsafe runtime
+     * configuration. Tap attribution continues through AccessibilityEvent
+     * sources plus before/after UI-tree inference in CaptureCoordinator.
      */
-    private fun requestTouchObservation() {
+    private fun configurePassiveInputObservation() {
         if (android.os.Build.VERSION.SDK_INT < 34) return
         runCatching {
             serviceInfo = serviceInfo?.apply {
-                // Both are required: the flag opts the service into motion
-                // events at all, the source mask says which ones.
-                flags = flags or
-                    android.accessibilityservice.AccessibilityServiceInfo.FLAG_SEND_MOTION_EVENTS
-                setMotionEventSources(android.view.InputDevice.SOURCE_TOUCHSCREEN)
+                flags = PassiveInputPolicy.sanitizeFlags(flags)
+                setMotionEventSources(PassiveInputPolicy.MOTION_EVENT_SOURCES)
             }
-        }
-    }
-
-    override fun onMotionEvent(event: android.view.MotionEvent) {
-        when (event.actionMasked) {
-            android.view.MotionEvent.ACTION_DOWN -> {
-                downX = event.rawX
-                downY = event.rawY
-                downAt = event.eventTime
-            }
-            android.view.MotionEvent.ACTION_UP -> {
-                // Only a tap counts. A scroll and a tap both start with a finger
-                // going down; reporting a fling as a tap would attribute a whole
-                // screen of churn to whatever the finger happened to start on,
-                // which is exactly the fabrication the scroll guard exists to
-                // prevent.
-                val slop = kotlin.math.hypot(
-                    (event.rawX - downX).toDouble(), (event.rawY - downY).toDouble(),
-                )
-                val held = event.eventTime - downAt
-                if (slop <= tapSlopPx && held <= TAP_MAX_MS) {
-                    CaptureCoordinator.onTap(event.rawX.toInt(), event.rawY.toInt())
-                }
-            }
-            android.view.MotionEvent.ACTION_CANCEL -> downAt = 0L
         }
     }
 
@@ -113,7 +77,6 @@ class PocketQaAccessibilityService : AccessibilityService() {
         val root = rootInActiveWindow ?: return
         latestPackage = pkg
         latestScreen = event.className?.toString()?.substringAfterLast('.') ?: latestScreen ?: "screen"
-
 
         // Also forward the raw event so the coordinator can classify taps /
         // typing / navigation transitions immediately.
@@ -149,4 +112,12 @@ class PocketQaAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() { /* required override, no-op */ }
+}
+
+/** Pure policy kept separate so the no-input-interception invariant is unit tested. */
+internal object PassiveInputPolicy {
+    const val MOTION_EVENT_SOURCES = 0
+
+    fun sanitizeFlags(flags: Int): Int =
+        flags and AccessibilityServiceInfo.FLAG_SEND_MOTION_EVENTS.inv()
 }

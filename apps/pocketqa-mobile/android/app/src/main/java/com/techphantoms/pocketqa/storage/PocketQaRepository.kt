@@ -42,7 +42,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     private val vault = CredentialVault(ctx)
     private val policy = com.techphantoms.pocketqa.policy.PolicyEngine()
 
-    data class Session(val id: String, val packageName: String)
+    data class Session(val id: String, val packageName: String, val fixture: String?)
 
     // -- Readiness -----------------------------------------------------------------
 
@@ -125,6 +125,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
 
     fun startSession(intentId: String, fixture: String?): Session = runBlocking {
         val intent = dao.intent(intentId) ?: error("intent not found")
+        val resolvedFixture = fixture ?: intent.fixture
         val id = "sess_" + UUID.randomUUID().toString().take(8)
         val sessionRow = SessionRow(
             id = id, intentId = intentId,
@@ -135,7 +136,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         )
         dao.upsertSession(sessionRow)
         dao.upsertActiveOp(ActiveOperationRow(kind = "CAPTURE", operationId = id, checkpointedAt = sessionRow.startedAt))
-        Session(id, sessionRow.packageName)
+        Session(id, sessionRow.packageName, resolvedFixture)
     }
 
     /** The session row, or null. Capture progress reads this so the UI reports
@@ -658,6 +659,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             put("name", intent["intent"] ?: JsonPrimitive("Untitled test"))
             put("intent", intent["intent"] ?: JsonPrimitive(""))
             put("packageName", JsonPrimitive(session.packageName))
+            intent["fixture"]?.let { put("fixture", it) }
             put("compiledBy", JsonPrimitive(engine))
             put("createdAt", JsonPrimitive(System.currentTimeMillis()))
             put("steps", steps)

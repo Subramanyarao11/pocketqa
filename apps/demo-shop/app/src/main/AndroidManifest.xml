@@ -14,6 +14,9 @@
         <meta-data
             android:name="pocketqa.fixtures"
             android:value="reset,coupon-retry,selector-drift" />
+        <meta-data
+            android:name="pocketqa.fixtureUriTemplate"
+            android:value="demoshop://reset?fixture={fixture}" />
 
         <activity
             android:name=".MainActivity"

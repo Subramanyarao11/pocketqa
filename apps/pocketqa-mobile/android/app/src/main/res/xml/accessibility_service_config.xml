@@ -16,6 +16,15 @@
   operator explicitly started against an app they explicitly chose, so the scope
   is now per session instead of per build.
 
+  `flagRetrieveInteractiveWindows` is what populates `getWindows()`. Without it
+  the only way to reach a tree is `rootInActiveWindow`, which is null whenever
+  something other than the app owns the active window — the soft keyboard after
+  a typeText step, a system dialog, or simply a window transition still in
+  flight. Replay then reported "accessibility service unavailable" while the
+  service was in fact connected and bound. The flag grants no new data: window
+  content was already retrievable, this only lets us ask for the target's own
+  window instead of whichever one happens to be active.
+
    * events other than window-content changes are filtered client-side;
    * screenshot is requested per-window only from the service, never
      via MediaProjection or arbitrary display capture.
@@ -24,6 +33,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewClicked|typeViewFocused|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows"
     android:notificationTimeout="80"
     android:canRetrieveWindowContent="true"
     android:canRequestTouchExplorationMode="false"
