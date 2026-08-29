@@ -1,0 +1,23 @@
+{
+  "name": "pocketqa",
+  "version": "0.0.1",
+  "private": true,
+  "workspaces": [
+    "apps/pocketqa-mobile",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup:check": "node scripts/setup-check.mjs",
+    "start": "npm run start --workspace=apps/pocketqa-mobile",
+    "android:pocketqa": "npm run android --workspace=apps/pocketqa-mobile -- --variant=internalLabDebug",
+    "android:demo-shop": "cd apps/demo-shop && ./gradlew assembleDebug",
+    "test": "npm run test --workspace=apps/pocketqa-mobile",
+    "test:contracts": "echo 'Contract tests placeholder'",
+    "test:safety": "echo 'Safety tests placeholder'",
+    "lint": "npm run lint --workspace=apps/pocketqa-mobile",
+    "maestro:canonical": "echo 'Maestro canonical tests placeholder'"
+  },
+  "engines": {
+    "node": ">= 22.11.0"
+  }
+}
