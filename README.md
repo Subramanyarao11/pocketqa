@@ -38,6 +38,7 @@ New contributors should read these in order:
 7. [AI Track B — Platform, Data and Integration](PocketQA_AI_Track_B_Platform.md)
 8. [AI engine handoff (AI-B-02)](PocketQA_AI_Engine_Handoff.md)
 9. [Capture findings and interaction-inference design](PocketQA_Capture_Findings_and_Inference_Design.md)
+10. [Wiring the AI layer into the product](PocketQA_AI_Integration_Design.md)
 
 Hackathon and pitch material:
 
