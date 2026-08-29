@@ -8,7 +8,11 @@ import {
 import { PocketQaNative, type TargetApp } from "@native";
 import { colors, radius, spacing, typography } from "@theme";
 
-const DEFAULT_INTENT = "Verify SAVE20 remains applied after checkout fails and I tap retry.";
+// Prefilling a coupon-retry intent made every test start life describing Demo
+// Shop, whatever app the operator picked — a Calculator capture arrived at review
+// titled "Verify SAVE20 remains applied…". The intent is the one thing only the
+// operator can supply, so start it empty and let the placeholder prompt for it.
+const DEFAULT_INTENT = "";
 
 /** Mock canned transcripts shown when the user "records". The real flow reaches
  *  Sarvam ASR; this preview keeps the confirm/edit contract identical. */
@@ -23,6 +27,7 @@ type VoiceState = "idle" | "recording" | "preview" | "confirmed";
 export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
   const [intent, setIntent] = useState(DEFAULT_INTENT);
   const [apps, setApps] = useState<TargetApp[]>([]);
+  const [appQuery, setAppQuery] = useState("");
   const [pkg, setPkg] = useState<string | null>(null);
   const [fixture, setFixture] = useState("coupon-retry");
   const [mode, setMode] = useState<"typed" | "voice">("typed");
@@ -39,7 +44,13 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
   useEffect(() => {
     PocketQaNative.listAllowlistedApps().then((list) => {
       setApps(list);
-      if (list.length > 0) setPkg(list[0].packageName);
+      // Only preselect when there is genuinely no choice to make. This used to
+      // take list[0] unconditionally, which was harmless while the allowlist had
+      // one hardcoded entry — but the list is now every launchable app on the
+      // device, so it silently armed a capture against whatever sorted first
+      // (Albums, on this phone). Choosing the target is the consent; it has to
+      // be deliberate.
+      if (list.length === 1) setPkg(list[0].packageName);
     });
   }, []);
 
@@ -81,6 +92,28 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
     setVoiceError("Voice pipeline unavailable — type your intent instead.");
     return null;
   };
+
+  // The picker lists every launchable app on the device — around fifty on a
+  // stock phone — which pushed the acknowledgement and Continue several screens
+  // down and made the target genuinely hard to find. Filter, and cap how many
+  // render at once so the rest of the form stays reachable.
+  const APP_LIST_LIMIT = 6;
+  const appQueryTrimmed = appQuery.trim().toLowerCase();
+  const filteredApps = appQueryTrimmed
+    ? apps.filter(
+        (a) =>
+          a.displayName.toLowerCase().includes(appQueryTrimmed) ||
+          a.packageName.toLowerCase().includes(appQueryTrimmed)
+      )
+    : apps;
+  // Keep the selected app visible even when a filter would exclude it, so the
+  // choice never silently disappears from view.
+  const visibleApps = (() => {
+    const head = filteredApps.slice(0, APP_LIST_LIMIT);
+    const selected = apps.find((a) => a.packageName === pkg);
+    if (selected && !head.some((a) => a.packageName === pkg)) return [selected, ...head.slice(0, APP_LIST_LIMIT - 1)];
+    return head;
+  })();
 
   const FIXTURE_LABELS: Record<string, string> = {
     reset: "Reset (empty state)",
@@ -183,7 +216,15 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
         <Text style={typography.metadata}>{intent.length} / 500</Text>
 
         <Text style={[typography.eyebrow, { marginTop: spacing.md }]}>Target app · allowlist only</Text>
-        {apps.map((app) => (
+        <TextInput
+          style={styles.input}
+          value={appQuery}
+          onChangeText={setAppQuery}
+          placeholder={`Search ${apps.length} apps`}
+          placeholderTextColor={colors.textDim}
+          accessibilityLabel="Search target apps"
+        />
+        {visibleApps.map((app) => (
           <TouchableOpacity
             key={app.packageName}
             onPress={() => setPkg(app.packageName)}
@@ -203,6 +244,14 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             </Card>
           </TouchableOpacity>
         ))}
+        {filteredApps.length > visibleApps.length && (
+          <Text style={typography.metadata}>
+            {`${filteredApps.length - visibleApps.length} more — refine the search to narrow this list.`}
+          </Text>
+        )}
+        {filteredApps.length === 0 && (
+          <Text style={typography.bodyMuted}>{`No installed app matches "${appQuery}".`}</Text>
+        )}
 
         {/* Fixtures come from the selected app, not from a constant. The list was
             hardcoded to Demo Shop's three, so picking Calculator offered it
@@ -277,6 +326,13 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: colors.borderStrong,
     color: colors.text,
     textAlignVertical: "top",
+  },
+  input: {
+    padding: spacing.md,
+    borderRadius: radius.input,
+    borderWidth: 1, borderColor: colors.borderStrong,
+    color: colors.text,
+    marginBottom: spacing.sm,
   },
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   radio: {
