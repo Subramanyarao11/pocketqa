@@ -123,6 +123,38 @@ export interface EvidenceStep {
   afterState?: UIState;
 }
 
+/** §7.9 — grounded selector candidates the user can pick between. */
+export interface SelectorCandidate {
+  index: number;
+  strategy: import("@domain").SelectorStrategy;
+  value: string;
+  confidence: number;
+  reason: string;
+  role?: string;
+  isPrimary: boolean;
+}
+
+/** §7.11 — Failure Detective repair proposal. */
+export interface FailureProposal {
+  runId: string;
+  stepId?: string;
+  category: import("@domain").FailureCategory;
+  summary: string;
+  suggestion: string;
+  action?:
+    | { kind: "promote-fallback"; strategy: string; value: string }
+    | { kind: "add-wait"; ms: number }
+    | { kind: "update-fixture"; fixture: string }
+    | { kind: "review-assertion"; assertionTarget: string };
+}
+
+export interface VoiceTranscript {
+  intentId: string;
+  transcript: string;
+  redacted: boolean;
+  confidence: number;
+}
+
 export interface MissionDraft {
   goal: string;
   packageAllowlist: string[];
@@ -232,6 +264,12 @@ export interface PocketQaNativeApi {
   stopReplay(runId: string): Promise<void>;
   getRun(runId: string): Promise<ReplayRunSummary>;
   getEvidenceTimeline(runId: string): Promise<EvidenceStep[]>;
+  getState(stateId: string): Promise<UIState | null>;
+  listSelectorCandidates(draftId: string, stepId: string): Promise<SelectorCandidate[]>;
+  promoteFallbackSelector(draftId: string, stepId: string, candidateIndex: number): Promise<TestDraft>;
+  getFailureProposal(runId: string): Promise<FailureProposal | null>;
+  submitVoiceTranscript(intentId: string, transcript: string): Promise<VoiceTranscript>;
+  checkpointActiveOperation(): Promise<void>;
 
   createMission(input: MissionDraft): Promise<Mission>;
   approveAndStartMission(missionId: string): Promise<void>;

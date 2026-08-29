@@ -1,6 +1,8 @@
 package com.techphantoms.pocketqa.inference
 
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.WritableMap
 
 /**
  * InferenceRouter — capability-aware inference dispatch.
@@ -26,4 +28,33 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
     fun rankCandidates(prompt: String, candidateIds: List<String>): List<String> = candidateIds
 
     fun explainSelector(prompt: String): String = "Deterministic selector: preferred stable anchor."
+
+    /**
+     * Voice intent transcription — PRD §7.5.
+     *
+     * The real path calls Sarvam AI when the operator has opted in and a network
+     * is available; otherwise it rejects with a recoverable envelope. This
+     * scaffold applies the redaction pass that is required regardless of source
+     * (credit-card and OTP scrubbing) and returns the normalised transcript.
+     */
+    fun transcribe(intentId: String, transcript: String): WritableMap {
+        val cardRegex = Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b")
+        val otpRegex = Regex("\\b\\d{4,8}\\b")
+        var redactedFlag = false
+        var out = transcript
+        if (cardRegex.containsMatchIn(out)) {
+            out = out.replace(cardRegex, "•••• redacted ••••")
+            redactedFlag = true
+        }
+        if (Regex("(?i)\\bOTP\\b").containsMatchIn(out) && otpRegex.containsMatchIn(out)) {
+            out = out.replace(otpRegex, "••••")
+            redactedFlag = true
+        }
+        val map = Arguments.createMap()
+        map.putString("intentId", intentId)
+        map.putString("transcript", out)
+        map.putBoolean("redacted", redactedFlag)
+        map.putDouble("confidence", 0.87)
+        return map
+    }
 }

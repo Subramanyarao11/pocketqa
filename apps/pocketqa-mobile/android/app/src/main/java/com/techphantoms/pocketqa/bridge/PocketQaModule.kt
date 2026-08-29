@@ -1,5 +1,6 @@
 package com.techphantoms.pocketqa.bridge
 
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -7,6 +8,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.util.UUID
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
 import com.techphantoms.pocketqa.compiler.CompileCoordinator
 import com.techphantoms.pocketqa.execution.ReplayExecutor
@@ -45,6 +47,43 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
         reactApplicationContext
             .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
             .emit(event, payload)
+    }
+
+    /**
+     * Reject a promise with the wire-safe PocketQaError envelope (§11.3).
+     * Every recoverable failure surfaces here so the JS layer can render
+     * remediation without inventing categories.
+     */
+    private fun rejectWithEnvelope(
+        promise: Promise,
+        code: String,
+        message: String,
+        recoverable: Boolean = true,
+        remediation: String? = null,
+    ) {
+        val envelope = Arguments.createMap().apply {
+            putString("code", code)
+            putString("message", message)
+            putBoolean("recoverable", recoverable)
+            if (remediation != null) putString("remediation", remediation)
+            putString("correlationId", UUID.randomUUID().toString())
+        }
+        promise.reject(code, message, envelope)
+    }
+
+    /** Convenience wrapper so every bridge method uses the envelope on throw. */
+    private inline fun guard(promise: Promise, block: () -> Unit) {
+        try {
+            block()
+        } catch (e: SecurityException) {
+            rejectWithEnvelope(promise, "POLICY_HARD_STOP", e.message ?: "Blocked by policy", false, e.message)
+        } catch (e: IllegalStateException) {
+            rejectWithEnvelope(promise, "INVALID_STATE", e.message ?: "Bad state", true, null)
+        } catch (e: IllegalArgumentException) {
+            rejectWithEnvelope(promise, "INVALID_INPUT", e.message ?: "Bad input", true, null)
+        } catch (e: Throwable) {
+            rejectWithEnvelope(promise, "UNEXPECTED", e.message ?: e::class.java.simpleName, true, null)
+        }
     }
 
     // ---------- Startup / readiness ----------
@@ -93,6 +132,24 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
     @ReactMethod fun stopReplay(runId: String, promise: Promise) { executor.stop(runId); promise.resolve(null) }
     @ReactMethod fun getRun(id: String, promise: Promise) { promise.resolve(repo.run(id)) }
     @ReactMethod fun getEvidenceTimeline(id: String, promise: Promise) { promise.resolve(repo.evidenceTimeline(id)) }
+    @ReactMethod fun getState(stateId: String, promise: Promise) {
+        guard(promise) { promise.resolve(repo.uiState(stateId)) }
+    }
+    @ReactMethod fun listSelectorCandidates(draftId: String, stepId: String, promise: Promise) {
+        guard(promise) { promise.resolve(repo.selectorCandidates(draftId, stepId)) }
+    }
+    @ReactMethod fun promoteFallbackSelector(draftId: String, stepId: String, candidateIndex: Int, promise: Promise) {
+        guard(promise) { promise.resolve(repo.promoteFallback(draftId, stepId, candidateIndex)) }
+    }
+    @ReactMethod fun getFailureProposal(runId: String, promise: Promise) {
+        guard(promise) { promise.resolve(repo.failureProposal(runId)) }
+    }
+    @ReactMethod fun submitVoiceTranscript(intentId: String, transcript: String, promise: Promise) {
+        guard(promise) { promise.resolve(inference.transcribe(intentId, transcript)) }
+    }
+    @ReactMethod fun checkpointActiveOperation(promise: Promise) {
+        guard(promise) { repo.checkpoint(); promise.resolve(null) }
+    }
 
     // ---------- Missions ----------
     @ReactMethod fun createMission(input: ReadableMap, promise: Promise) { promise.resolve(repo.createMission(input)) }

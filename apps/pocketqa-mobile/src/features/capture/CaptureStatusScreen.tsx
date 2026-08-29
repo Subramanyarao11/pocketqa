@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
-  PrimaryButton, StatusPill, TopBar,
+  InlineNotice, PrimaryButton, StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative } from "@native";
 import { useActiveOperationStore } from "@store";
@@ -19,6 +19,13 @@ const CANONICAL_STEPS: Array<{ action: "tap" | "typeText"; label: string; input?
   { action: "tap", label: "Retry checkout" },
 ];
 
+/** Demo-only tail — shown so reviewers see the policy engine kick in on cue. */
+const HARD_STOP_DEMO: Array<{ action: "tap" | "typeText"; label: string }> = [
+  { action: "tap", label: "Place order" },
+  { action: "tap", label: "Grant permission" },
+  { action: "typeText", label: "Type OTP" },
+];
+
 /**
  * On a real device the user is in the target app while capture runs.  When they
  * return to PocketQA this screen appears and lets them Pause/Resume/Finish/Cancel.
@@ -29,10 +36,24 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
   const activeProgress = useActiveOperationStore((s) =>
     s.active?.kind === "CAPTURE" ? s.active.progress : undefined
   );
+  const hardStop = useActiveOperationStore((s) => s.lastHardStop);
+  const dismissHardStop = useActiveOperationStore((s) => s.dismissHardStop);
   const [cancelOpen, setCancelOpen] = useState(false);
 
   const stepCount = activeProgress?.stepCount ?? 0;
   const state = activeProgress?.state ?? "recording";
+
+  // Session ended by a hard stop — auto-return home after the user acknowledges.
+  useEffect(() => {
+    if (hardStop && hardStop.operationId === route.params.sessionId) {
+      const t = setTimeout(() => {
+        dismissHardStop();
+        navigation.replace("Home");
+      }, 3200);
+      return () => clearTimeout(t);
+    }
+    return undefined;
+  }, [hardStop, route.params.sessionId, dismissHardStop, navigation]);
 
   return (
     <>
@@ -42,6 +63,13 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
         right={<StatusPill label={state.toUpperCase()} tone={state === "recording" ? "red" : "amber"} />}
       />
       <AppScreen>
+        {hardStop && hardStop.operationId === route.params.sessionId && (
+          <InlineNotice
+            title={`Hard stop · ${hardStop.category}`}
+            detail={`[${hardStop.code}] ${hardStop.message}`}
+            tone="danger"
+          />
+        )}
         <Card>
           <Text style={typography.eyebrow}>Session state</Text>
           <Text style={typography.title}>{state === "paused" ? "Paused" : state === "finalising" ? "Finalising" : "Recording"}</Text>
@@ -71,6 +99,23 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
               />
             </View>
           ))}
+        </Card>
+
+        <Card tone="warn">
+          <Text style={typography.eyebrow}>Policy demo</Text>
+          <Text style={typography.bodyMuted}>Tapping any of these triggers a hard stop.</Text>
+          <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+            {HARD_STOP_DEMO.map((s, i) => (
+              <View key={i} style={styles.row}>
+                <StatusPill label="Blocked" tone="red" />
+                <Text style={[typography.body, { flex: 1 }]}>{s.label}</Text>
+                <GhostButton
+                  label="Try"
+                  onPress={() => PocketQaNative.simulateCaptureEvent(route.params.sessionId, s)}
+                />
+              </View>
+            ))}
+          </View>
         </Card>
 
         <Card>

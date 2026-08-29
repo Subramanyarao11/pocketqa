@@ -8,6 +8,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.compiler.CompileCoordinator
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.PocketQaRepository
@@ -60,7 +61,21 @@ class CaptureCoordinator(
 
     fun simulate(sessionId: String, evt: ReadableMap) {
         // Test/demo helper — the release build wires real accessibility events instead.
+        val label = if (evt.hasKey("label")) evt.getString("label") ?: "" else ""
+        val decision = policy.evaluateLabel(label, activePackage.get())
+        if (decision is PolicyEngine.Decision.HardStop) {
+            emitEvent("CAPTURE_HARD_STOP", policy.toHardStopPayload(sessionId, decision))
+            return
+        }
         repo.appendSimulatedEvent(sessionId, evt)
+    }
+
+    private fun emitEvent(type: String, payload: com.facebook.react.bridge.WritableMap) {
+        val envelope = com.facebook.react.bridge.Arguments.createMap()
+        envelope.putString("type", type)
+        envelope.putMap("payload", payload)
+        ctx.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+            .emit("PocketQaEvent", envelope)
     }
 
     fun pause(sessionId: String) { repo.pauseSession(sessionId) }

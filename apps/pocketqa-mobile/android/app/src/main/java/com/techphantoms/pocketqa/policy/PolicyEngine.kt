@@ -54,4 +54,46 @@ class PolicyEngine {
     }
 
     fun inAllowlist(packageName: String?): Boolean = packageName in allowlistedPackages
+
+    /** Structured decision — mirrors PolicyDecision in src/domain/policy.ts. */
+    sealed class Decision {
+        object Allowed : Decision()
+        data class HardStop(val code: String, val category: Category, val message: String) : Decision()
+    }
+
+    enum class Category { PACKAGE, SENSITIVE, BLOCKED, AMBIGUOUS, TARGET_MISSING, BUDGET, USER }
+
+    fun evaluateLabel(label: String, activePackage: String?): Decision {
+        if (activePackage != null && !inAllowlist(activePackage)) {
+            return Decision.HardStop("PACKAGE_BOUNDARY_VIOLATION", Category.PACKAGE,
+                "Active package $activePackage is not in the allowlist.")
+        }
+        if (isBlockedCategory(label)) {
+            return Decision.HardStop("BLOCKED_CATEGORY", Category.BLOCKED,
+                "\"$label\" matches a blocked action category.")
+        }
+        if (isSensitive(label)) {
+            return Decision.HardStop("SENSITIVE_TARGET_BLOCKED", Category.SENSITIVE,
+                "Sensitive input target — hard stop.")
+        }
+        return Decision.Allowed
+    }
+
+    /** Format a Decision as the wire-safe HardStop payload consumed by JS. */
+    fun toHardStopPayload(operationId: String, decision: Decision.HardStop): WritableMap {
+        val map = Arguments.createMap()
+        map.putString("operationId", operationId)
+        map.putString("code", decision.code)
+        map.putString("category", when (decision.category) {
+            Category.PACKAGE -> "package"
+            Category.SENSITIVE -> "sensitive"
+            Category.BLOCKED -> "blocked"
+            Category.AMBIGUOUS -> "ambiguous"
+            Category.TARGET_MISSING -> "target-missing"
+            Category.BUDGET -> "budget"
+            Category.USER -> "user"
+        })
+        map.putString("message", decision.message)
+        return map
+    }
 }

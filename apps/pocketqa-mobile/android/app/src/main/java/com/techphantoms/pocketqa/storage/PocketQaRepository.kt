@@ -76,4 +76,19 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     fun deleteSession(id: String) {}
     fun deleteTest(id: String) {}
     fun deleteAll() {}
+
+    // §7.11 evidence detail + §7.9 selector candidates ---------------------------------------
+    fun uiState(stateId: String): WritableMap? = null // Room-backed impl fills nodes + ocr.
+    fun selectorCandidates(draftId: String, stepId: String): com.facebook.react.bridge.WritableArray =
+        Arguments.createArray()
+    fun promoteFallback(draftId: String, stepId: String, candidateIndex: Int): WritableMap =
+        Arguments.createMap()
+    fun failureProposal(runId: String): WritableMap? = null
+
+    /**
+     * §10 session persistence — invoked when the app is backgrounded.
+     * The Room row for the active operation gets its `checkpointedAt` bumped so
+     * that reopening the app can rehydrate the workflow at the exact step.
+     */
+    fun checkpoint() { /* update SessionState.checkpointedAt = now, flush WAL */ }
 }

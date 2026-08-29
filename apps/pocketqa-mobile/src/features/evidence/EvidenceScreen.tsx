@@ -1,21 +1,31 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill,
-  TimelineRow, TopBar,
+  AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
+  StatusPill, TimelineRow, TopBar,
 } from "@components";
-import { PocketQaNative, type EvidenceStep, type ReplayRunSummary } from "@native";
+import {
+  PocketQaNative, type EvidenceStep, type FailureProposal, type ReplayRunSummary,
+} from "@native";
 import { colors, spacing, typography } from "@theme";
 
 export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
   const [run, setRun] = useState<ReplayRunSummary | null>(null);
   const [timeline, setTimeline] = useState<EvidenceStep[]>([]);
+  const [proposal, setProposal] = useState<FailureProposal | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   useEffect(() => {
     (async () => {
-      setRun(await PocketQaNative.getRun(route.params.runId));
-      setTimeline(await PocketQaNative.getEvidenceTimeline(route.params.runId));
+      const [r, t, p] = await Promise.all([
+        PocketQaNative.getRun(route.params.runId),
+        PocketQaNative.getEvidenceTimeline(route.params.runId),
+        PocketQaNative.getFailureProposal(route.params.runId),
+      ]);
+      setRun(r);
+      setTimeline(t);
+      setProposal(p);
     })().catch(() => {});
   }, [route.params.runId]);
 
@@ -24,6 +34,20 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
   }
 
   const pass = run.result.passed;
+  const failureStateId = run.result.failure?.evidenceStateId;
+
+  const applyProposal = async () => {
+    if (!proposal?.action) return;
+    if (proposal.action.kind === "promote-fallback" && proposal.stepId) {
+      // Best-effort: pick the first fallback candidate for the failing step.
+      const candidates = await PocketQaNative.listSelectorCandidates(run.test.id, proposal.stepId);
+      const match = candidates.find(
+        (c) => c.strategy === proposal.action!["strategy" as never] && c.value === proposal.action!["value" as never]
+      ) ?? candidates.find((c) => !c.isPrimary);
+      if (match) await PocketQaNative.promoteFallbackSelector(run.test.id, proposal.stepId, match.index);
+    }
+    navigation.replace("ReviewTest", { draftId: run.test.id });
+  };
 
   return (
     <>
@@ -49,6 +73,32 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
           )}
         </Card>
 
+        {proposal && !pass && (
+          <Card tone="warn">
+            <View style={styles.detectiveHeader}>
+              <Text style={typography.eyebrow}>Failure Detective</Text>
+              <StatusPill label={proposal.category} tone="amber" />
+            </View>
+            <Text style={typography.body}>{proposal.suggestion}</Text>
+            {proposal.action?.kind === "promote-fallback" && (
+              <Text style={typography.bodyMuted}>
+                Suggested: {proposal.action.strategy} = {proposal.action.value}
+              </Text>
+            )}
+            <View style={styles.detectiveActions}>
+              {failureStateId && (
+                <GhostButton
+                  label="Open failing state"
+                  onPress={() => navigation.navigate("EvidenceDetail", { stateId: failureStateId })}
+                />
+              )}
+              {proposal.action && (
+                <PrimaryButton label="Apply suggestion" onPress={applyProposal} />
+              )}
+            </View>
+          </Card>
+        )}
+
         <Card>
           <Text style={typography.eyebrow}>Provenance</Text>
           <View style={styles.pills}>
@@ -60,8 +110,19 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
 
         <Text style={typography.eyebrow}>Timeline</Text>
         {timeline.map((t, i) => (
-          <TimelineRow key={t.step.id} step={t.step} index={i} result={t.result} />
+          <TouchableOpacity
+            key={t.step.id}
+            onPress={() => t.afterState && navigation.navigate("EvidenceDetail", { stateId: t.afterState.id })}
+            accessibilityRole="button"
+            accessibilityLabel={`Inspect state after step ${i + 1}`}
+          >
+            <TimelineRow step={t.step} index={i} result={t.result} />
+          </TouchableOpacity>
         ))}
+
+        {copyState === "copied" && (
+          <InlineNotice title="Copied" detail="Redacted diagnostics copied to clipboard." tone="info" />
+        )}
       </AppScreen>
       <BottomActionBar>
         <GhostButton
@@ -69,6 +130,14 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
           onPress={async () => {
             const art = await PocketQaNative.exportTest(run.test.id, run.test.version);
             await PocketQaNative.shareArtifact(art.uri, art.mimeType);
+          }}
+        />
+        <GhostButton
+          label="Copy diagnostics"
+          onPress={async () => {
+            await PocketQaNative.copyRedactedDiagnostics(run.runId);
+            setCopyState("copied");
+            setTimeout(() => setCopyState("idle"), 2000);
           }}
         />
         <View style={{ flex: 1 }} />
@@ -86,4 +155,6 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
 
 const styles = StyleSheet.create({
   pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+  detectiveHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  detectiveActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
 });
