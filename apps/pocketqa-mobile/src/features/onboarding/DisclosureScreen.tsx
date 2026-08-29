@@ -39,6 +39,8 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
           onPress={() => setConsent((c) => !c)}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: consent }}
+          accessibilityLabel="I understand what PocketQA can inspect and where it can act."
+          accessibilityHint="Toggles capture disclosure consent."
         >
           <View style={[styles.box, { borderColor: consent ? colors.lime : colors.borderStrong, backgroundColor: consent ? colors.lime : "transparent" }]}>
             {consent && <Text style={{ color: "#0A0F14", fontWeight: "900" }}>✓</Text>}

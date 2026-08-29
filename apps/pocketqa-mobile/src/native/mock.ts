@@ -1,8 +1,11 @@
 import {
   ALLOWLISTED_PACKAGES,
+  buildEvidencePayload,
   compileDraft,
   djb2,
   nextId,
+  proposeFailureRepair,
+  rankSelectorsForNode,
   replayApprovedTest,
   runMission,
   DemoShop,
@@ -19,6 +22,7 @@ import type {
   CompileJob,
   DeviceReadiness,
   EvidenceStep,
+  FailureProposal,
   IntentInput,
   MissionDraft,
   MissionSummary,
@@ -28,11 +32,13 @@ import type {
   ProviderStatus,
   ReplayRunSummary,
   SaveDraftRequest,
+  SelectorCandidate,
   ShareableArtifact,
   StartupState,
   TargetApp,
   TestListItem,
   ValidationResult,
+  VoiceTranscript,
 } from "./types";
 
 /**
@@ -75,6 +81,10 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
   const runs = new Map<string, ReplayRunSummary>();
   const missions = new Map<string, { mission: Mission; events: MissionEvent[]; summary?: MissionSummary }>();
   const intents = new Map<string, IntentInput & { intentId: string }>();
+  /** Merged state library — capture sessions + replay-observed states. */
+  const capturedStates = new Map<string, UIState>();
+  /** In-memory export payloads keyed by "path"; the real bridge writes to disk. */
+  const exportBlobs = new Map<string, string>();
 
   return {
     async getStartupState(): Promise<StartupState> {
@@ -133,6 +143,15 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
     async simulateCaptureEvent(sessionId, evt) {
       const s = sessions.get(sessionId);
       if (!s || s.paused) return;
+      // Hard-stop categories the mock recognises without touching the shop.
+      const hardStop = classifyLabelHardStop(evt.label, s.packageName, readiness.packageAllowlist);
+      if (hardStop) {
+        emit({
+          type: "CAPTURE_HARD_STOP",
+          payload: { operationId: sessionId, ...hardStop },
+        });
+        return;
+      }
       const before = DemoShop.snapshotShop(s.shop);
       // Map high-level label -> shop action.
       const nextShop = mapLabelToShopAction(s.shop, evt.label, evt.input);
@@ -140,6 +159,8 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
       const after = DemoShop.snapshotShop(nextShop);
       s.states[before.id] = before;
       s.states[after.id] = after;
+      capturedStates.set(before.id, before);
+      capturedStates.set(after.id, after);
       s.events.push({
         id: nextId("evt"),
         at: Date.now(),
@@ -336,8 +357,90 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
       const r = runs.get(runId); if (!r) return [];
       return r.test.steps.map((step) => {
         const stepResult = r.result.stepResults.find((sr) => sr.stepId === step.id);
-        return { step, result: stepResult };
+        const beforeState = capturedStates.get(step.beforeStateId);
+        const afterState = capturedStates.get(step.afterStateId);
+        return { step, result: stepResult, beforeState, afterState };
       });
+    },
+
+    async getState(stateId) {
+      return capturedStates.get(stateId) ?? null;
+    },
+
+    async listSelectorCandidates(draftId, stepId): Promise<SelectorCandidate[]> {
+      const d = drafts.get(draftId); if (!d) return [];
+      const step = d.steps.find((s) => s.id === stepId);
+      if (!step) return [];
+      const beforeState = capturedStates.get(step.beforeStateId);
+      const source = step.selector;
+      if (!source) return [];
+
+      // Prefer the ranked list computed against the observed node when we have it.
+      const node = beforeState?.nodes.find((n) =>
+        n.testId === source.primary.value ||
+        n.resourceId === source.primary.value ||
+        n.text === source.primary.value ||
+        n.contentDescription === source.primary.value
+      );
+      const ranked = node && beforeState ? rankSelectorsForNode(beforeState, node) : source;
+      const all = [ranked.primary, ...ranked.fallbacks];
+      return all.map((sel, i) => ({
+        index: i,
+        strategy: sel.strategy,
+        value: sel.value,
+        confidence: sel.confidence,
+        reason: sel.reason,
+        role: sel.role,
+        isPrimary: i === 0,
+      }));
+    },
+
+    async promoteFallbackSelector(draftId, stepId, candidateIndex) {
+      const d = drafts.get(draftId); if (!d) throw new Error("draft not found");
+      const stepIdx = d.steps.findIndex((s) => s.id === stepId);
+      if (stepIdx < 0) throw new Error("step not found");
+      const step = d.steps[stepIdx];
+      if (!step.selector) return d;
+      const options = [step.selector.primary, ...step.selector.fallbacks];
+      const chosen = options[candidateIndex];
+      if (!chosen) throw new Error("candidate not found");
+      const remaining = options.filter((_, i) => i !== candidateIndex);
+      const nextSelector = {
+        primary: chosen,
+        fallbacks: remaining.slice(0, 2).filter((s) => s.strategy !== "coordinates"),
+        candidateCount: step.selector.candidateCount,
+      };
+      const next: TestDraft = {
+        ...d,
+        steps: d.steps.map((s, i) => i === stepIdx
+          ? { ...s, selector: nextSelector, needsHumanCorrection: false }
+          : s),
+      };
+      drafts.set(next.id, next);
+      return next;
+    },
+
+    async getFailureProposal(runId): Promise<FailureProposal | null> {
+      const r = runs.get(runId); if (!r) return null;
+      const p = proposeFailureRepair(r.test, r.result);
+      return p as FailureProposal | null;
+    },
+
+    async submitVoiceTranscript(intentId, transcript): Promise<VoiceTranscript> {
+      const stored = intents.get(intentId);
+      if (stored) intents.set(intentId, { ...stored, intent: transcript });
+      // Very light redaction pass — strip anything that looks like a card / OTP.
+      const redacted = transcript.replace(/\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b/g, "•••• redacted ••••");
+      return {
+        intentId,
+        transcript: redacted,
+        redacted: redacted !== transcript,
+        confidence: 0.87,
+      };
+    },
+
+    async checkpointActiveOperation() {
+      // Mock: no-op — the real Kotlin coordinator persists the active op to Room.
     },
 
     async createMission(input: MissionDraft): Promise<Mission> {
@@ -416,6 +519,10 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
 
     async exportTest(testId, _version): Promise<ShareableArtifact> {
       const t = tests.get(testId); if (!t) throw new Error("test not found");
+      // Build the deterministic YAML in memory. Real Kotlin writes to app-private
+      // storage and returns a `content://` URI backed by FileProvider.
+      const yaml = toMaestroYaml(t);
+      exportBlobs.set(`tests/${t.id}.yaml`, yaml);
       return {
         uri: `mock://tests/${t.id}.yaml`,
         mimeType: "text/yaml",
@@ -425,6 +532,17 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
     },
     async exportEvidence(runId): Promise<ShareableArtifact> {
       const r = runs.get(runId); if (!r) throw new Error("run not found");
+      const states: Record<string, UIState> = {};
+      for (const [id, state] of capturedStates.entries()) states[id] = state;
+      const bundle = buildEvidencePayload({
+        test: r.test,
+        result: r.result,
+        states,
+        intent: r.test.intent,
+        device: { model: "PocketQA Mock", os: "Android 14", app: r.test.packageName, pocketqa: "0.1.0" },
+        offline: r.result.offline,
+      });
+      exportBlobs.set(`evidence/${r.runId}.bundle.json`, JSON.stringify(bundle, null, 2));
       return {
         uri: `mock://evidence/${r.runId}.zip`,
         mimeType: "application/zip",
@@ -445,12 +563,41 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
     async deleteProviderCredential(provider) { readiness.connected[provider] = { configured: false }; },
     async deleteSession(sessionId) { sessions.delete(sessionId); },
     async deleteTest(testId) { tests.delete(testId); },
-    async deleteAllData() { sessions.clear(); drafts.clear(); tests.clear(); runs.clear(); missions.clear(); intents.clear(); },
+    async deleteAllData() {
+      sessions.clear(); drafts.clear(); tests.clear(); runs.clear();
+      missions.clear(); intents.clear(); capturedStates.clear();
+    },
 
     addListener(cb) { listeners.add(cb); return () => listeners.delete(cb); },
   };
 
   function _yamlPreview(t: ApprovedTest): string { return toMaestroYaml(t); }
+}
+
+/** Recognise hard-stop categories from an operator's typed label (§10.4). */
+function classifyLabelHardStop(
+  label: string,
+  activePackage: string,
+  allowlist: string[]
+): { code: string; category: import("./types").HardStop["category"]; message: string } | null {
+  const l = label.toLowerCase();
+  if (!allowlist.includes(activePackage)) {
+    return {
+      code: "PACKAGE_BOUNDARY_VIOLATION",
+      category: "package",
+      message: `Active package ${activePackage} is not in the allowlist.`,
+    };
+  }
+  if (/pay|checkout complete|confirm order|place order|purchase|buy now/.test(l)) {
+    return { code: "BLOCKED_CATEGORY", category: "blocked", message: `"${label}" is in the blocked action category.` };
+  }
+  if (/password|otp|cvv|card number|\bpin\b|biometric/.test(l)) {
+    return { code: "SENSITIVE_TARGET_BLOCKED", category: "sensitive", message: `Sensitive input target — hard stop.` };
+  }
+  if (/grant permission|allow permission|accept terms|delete account|sign out permanent|install|uninstall/.test(l)) {
+    return { code: "BLOCKED_CATEGORY", category: "blocked", message: `Irreversible/permission action — hard stop.` };
+  }
+  return null;
 }
 
 function mapLabelToShopAction(shop: DemoShop.ShopState, label: string, input?: string): DemoShop.ShopState {

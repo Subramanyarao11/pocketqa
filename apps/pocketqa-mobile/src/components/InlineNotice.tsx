@@ -11,9 +11,16 @@ export interface InlineNoticeProps {
 
 /** Info/warning/error/local-mode strip. Never rely on colour alone. */
 export function InlineNotice({ title, detail, tone = "info", icon }: InlineNoticeProps) {
+  const roleForTone = tone === "danger" ? "alert" : "summary";
+  const spoken = detail ? `${title}. ${detail}` : title;
   return (
     <Card tone={tone}>
-      <View style={styles.row}>
+      <View
+        style={styles.row}
+        accessible
+        accessibilityRole={roleForTone as never}
+        accessibilityLabel={spoken}
+      >
         {icon}
         <View style={{ flex: 1 }}>
           <Text style={[typography.h2, { color: colors.text }]}>{title}</Text>

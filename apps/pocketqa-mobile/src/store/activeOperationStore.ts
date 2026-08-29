@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type {
   CaptureProgress,
   CompileProgress,
+  HardStop,
   MissionProgress,
   PocketQaEvent,
   ReplayProgress,
@@ -16,10 +17,13 @@ export type ActiveOperation =
 
 interface ActiveOperationState {
   active?: ActiveOperation;
+  /** Latest hard stop the user hasn't dismissed yet. */
+  lastHardStop?: HardStop;
   hydrate(): Promise<void>;
   applyEvent(event: PocketQaEvent): void;
   setActive(op: ActiveOperation | undefined): void;
   clearIfTerminal(): void;
+  dismissHardStop(): void;
 }
 
 export const useActiveOperationStore = create<ActiveOperationState>((set, get) => ({
@@ -36,7 +40,7 @@ export const useActiveOperationStore = create<ActiveOperationState>((set, get) =
         set({ active: { kind: "CAPTURE", id: event.payload.sessionId, progress: event.payload } });
         break;
       case "CAPTURE_HARD_STOP":
-        set({ active: undefined });
+        set({ active: undefined, lastHardStop: event.payload });
         break;
       case "COMPILE_PROGRESS":
         set({ active: { kind: "COMPILE", id: event.payload.jobId, progress: event.payload } });
@@ -61,4 +65,5 @@ export const useActiveOperationStore = create<ActiveOperationState>((set, get) =
   },
   setActive(op) { set({ active: op }); },
   clearIfTerminal() { set({ active: undefined }); },
+  dismissHardStop() { set({ lastHardStop: undefined }); },
 }));

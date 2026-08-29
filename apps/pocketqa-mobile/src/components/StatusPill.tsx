@@ -12,8 +12,12 @@ export function StatusPill({ label, tone = "dim", icon }: StatusPillProps) {
   const fg = toneColor[tone];
   const bg = tone === "dim" ? "transparent" : `${fg}20`;
   return (
-    <View style={[styles.root, { backgroundColor: bg, borderColor: tone === "dim" ? colors.border : "transparent" }]}
-          accessibilityLabel={label}>
+    <View
+      style={[styles.root, { backgroundColor: bg, borderColor: tone === "dim" ? colors.border : "transparent" }]}
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={label}
+    >
       {icon}
       <Text style={[styles.text, { color: fg }]} numberOfLines={1}>{label}</Text>
     </View>

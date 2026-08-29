@@ -1,6 +1,118 @@
-import type { ApprovedTest, ReplayResult, UIState } from "./schemas";
+import type { ApprovedTest, FailureCategory, ReplayResult, TestStep, UIState } from "./schemas";
 import { toMaestroYaml } from "./maestro";
 import { djb2 } from "./ids";
+
+/**
+ * Failure Detective — PRD §7.11 / FR-EVD-002.
+ *
+ * Given a failed replay, produce a plain-English repair suggestion the reviewer
+ * can act on.  Suggestions are conservative: propose, never patch silently.
+ */
+export interface FailureProposalDomain {
+  runId: string;
+  stepId?: string;
+  category: FailureCategory;
+  summary: string;
+  suggestion: string;
+  action?:
+    | { kind: "promote-fallback"; strategy: string; value: string }
+    | { kind: "add-wait"; ms: number }
+    | { kind: "update-fixture"; fixture: string }
+    | { kind: "review-assertion"; assertionTarget: string };
+}
+
+export function proposeFailureRepair(
+  test: ApprovedTest,
+  result: ReplayResult
+): FailureProposalDomain | null {
+  if (!result.failure || result.passed) return null;
+  const { failure } = result;
+  const failingStepResult = result.stepResults.find((s) => s.status === "fail");
+  const failingStep: TestStep | undefined = failingStepResult
+    ? test.steps.find((s) => s.id === failingStepResult.stepId)
+    : undefined;
+
+  switch (failure.category) {
+    case "selector-drift": {
+      const fallback = failingStep?.selector?.fallbacks[0];
+      if (fallback) {
+        return {
+          runId: result.runId,
+          stepId: failingStep?.id,
+          category: failure.category,
+          summary: failure.summary,
+          suggestion: `Promote fallback selector "${fallback.strategy}=${fallback.value}" (${(fallback.confidence * 100).toFixed(0)}% confidence).`,
+          action: { kind: "promote-fallback", strategy: fallback.strategy, value: fallback.value },
+        };
+      }
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "Re-record this step — no stable fallback selector is available.",
+      };
+    }
+    case "assertion-regression": {
+      const failed = result.assertionResults.find((a) => a.status === "fail");
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: failed
+          ? `Verify the expected value "${failed.expected}" still matches the intent, or update the assertion.`
+          : "Review the failing assertion — the observed state no longer matches expectation.",
+        action: failed ? { kind: "review-assertion", assertionTarget: failed.expected ?? "" } : undefined,
+      };
+    }
+    case "timeout-performance":
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "Add a short wait before this step or increase the idle timeout.",
+        action: { kind: "add-wait", ms: 500 },
+      };
+    case "environment-fixture":
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "Reset to a known fixture before replay.",
+        action: { kind: "update-fixture", fixture: "reset" },
+      };
+    case "policy-hard-stop":
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "Policy blocked this action. Re-record so the step lands inside the allowlist.",
+      };
+    case "navigation-divergence":
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "The screen diverged from what was captured. Re-record from the failing step.",
+      };
+    case "target-app-crash":
+    case "permission-capture":
+    case "unknown":
+    default:
+      return {
+        runId: result.runId,
+        stepId: failingStep?.id,
+        category: failure.category,
+        summary: failure.summary,
+        suggestion: "Open the evidence trail to inspect the failing state before repairing.",
+      };
+  }
+}
 
 /**
  * Serialize an evidence bundle to a plain payload.  The React Native façade
