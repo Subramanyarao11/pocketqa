@@ -1,3 +1,4 @@
+// PocketQA — root Gradle build.
 buildscript {
     ext {
         buildToolsVersion = "37.0.0"
@@ -6,6 +7,7 @@ buildscript {
         targetSdkVersion = 35
         ndkVersion = "27.1.12297006"
         kotlinVersion = "2.2.0"
+        roomVersion = "2.6.1"
     }
     repositories {
         google()
@@ -14,8 +16,18 @@ buildscript {
     dependencies {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
-        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath("org.jetbrains.kotlin:kotlin-serialization:$kotlinVersion")
+        classpath("com.google.devtools.ksp:symbol-processing-gradle-plugin:$kotlinVersion-1.0.20")
     }
 }
 
 apply plugin: "com.facebook.react.rootproject"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://www.jitpack.io' }
+    }
+}

@@ -30,13 +30,20 @@ class CaptureCoordinator(
     companion object {
         private val service = AtomicReference<PocketQaAccessibilityService?>(null)
         private val activePackage = AtomicReference<String?>(null)
+        private val activeSession = AtomicReference<String?>(null)
+        @Volatile private var stateSink: ((UiTreeCapture.Snapshot) -> Unit)? = null
 
         fun attach(s: PocketQaAccessibilityService) { service.set(s) }
         fun detach(s: PocketQaAccessibilityService) { service.compareAndSet(s, null) }
         fun activePackage(): String? = activePackage.get()
 
         fun onEvent(event: AccessibilityEvent, root: AccessibilityNodeInfo?) {
-            // Placeholder: normalize + debounce + snapshot semantic states here.
+            // Reserved for future micro-classification. The debounced snapshot
+            // from [onStableState] carries the authoritative UI state.
+        }
+
+        fun onStableState(snapshot: UiTreeCapture.Snapshot) {
+            stateSink?.invoke(snapshot)
         }
     }
 
@@ -51,12 +58,42 @@ class CaptureCoordinator(
         val intentId = input.getString("intentId") ?: return promise.reject("ARG", "intentId required")
         val fixture = if (input.hasKey("fixture")) input.getString("fixture") else null
         val session = repo.startSession(intentId, fixture)
-        if (!policy.allowlist().any { it.getString("packageName") == session.packageName }) {
+        if (!policy.inAllowlist(session.packageName)) {
             return promise.reject("POLICY_DENIED", "package not allowlisted")
         }
         activePackage.set(session.packageName)
+        activeSession.set(session.id)
+        // Sink stable states from the accessibility service into Room and echo
+        // a CAPTURE_PROGRESS ping so the JS layer sees liveness.
+        stateSink = { snapshot ->
+            repo.persistUIState(
+                id = snapshot.stateId,
+                packageName = session.packageName,
+                screenName = extractScreenFromPayload(snapshot.payload),
+                payload = snapshot.payload,
+            )
+            emitCaptureProgress(session.id, session.packageName)
+        }
         launchDemoShop(session.packageName)
-        promise.resolve(mapOf("sessionId" to session.id))
+        val out = com.facebook.react.bridge.Arguments.createMap()
+        out.putString("sessionId", session.id)
+        promise.resolve(out)
+    }
+
+    private fun extractScreenFromPayload(payload: String): String = try {
+        val obj = com.techphantoms.pocketqa.storage.JsonBridge.json
+            .parseToJsonElement(payload) as? kotlinx.serialization.json.JsonObject
+        obj?.get("screenName")?.toString()?.trim('"') ?: "screen"
+    } catch (_: Throwable) { "screen" }
+
+    private fun emitCaptureProgress(sessionId: String, packageName: String) {
+        val payload = com.facebook.react.bridge.Arguments.createMap()
+        payload.putString("sessionId", sessionId)
+        payload.putString("state", "recording")
+        payload.putInt("stepCount", 0)
+        payload.putInt("elapsedMs", 0)
+        payload.putString("packageName", packageName)
+        emitEvent("CAPTURE_PROGRESS", payload)
     }
 
     fun simulate(sessionId: String, evt: ReadableMap) {
@@ -84,11 +121,17 @@ class CaptureCoordinator(
     fun finish(sessionId: String, compiler: CompileCoordinator, promise: Promise) {
         val jobId = compiler.compile(sessionId)
         activePackage.set(null)
-        promise.resolve(mapOf("compileJobId" to jobId))
+        activeSession.set(null)
+        stateSink = null
+        val out = com.facebook.react.bridge.Arguments.createMap()
+        out.putString("compileJobId", jobId)
+        promise.resolve(out)
     }
 
     fun cancel(sessionId: String, deleteArtifacts: Boolean) {
         activePackage.set(null)
+        activeSession.set(null)
+        stateSink = null
         repo.cancelSession(sessionId, deleteArtifacts)
     }
 

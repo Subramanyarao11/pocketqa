@@ -36,6 +36,11 @@ class PolicyEngine {
             val map: WritableMap = Arguments.createMap()
             map.putString("packageName", pkg)
             map.putString("displayName", "PocketQA Demo Shop")
+            val fixtures = Arguments.createArray()
+            fixtures.pushString("reset")
+            fixtures.pushString("coupon-retry")
+            fixtures.pushString("selector-drift")
+            map.putArray("fixtureIds", fixtures)
             arr.pushMap(map)
         }
         return arr

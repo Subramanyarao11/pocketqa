@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider paths for PocketQA exports.
+  All artifacts live under the app's private files/ directory so they can be
+  shared via the Sharesheet without granting broad storage access.
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <files-path name="exports" path="exports/" />
+    <files-path name="evidence" path="evidence/" />
+    <cache-path name="tmp" path="pocketqa/" />
+</paths>
