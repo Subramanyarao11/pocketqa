@@ -1,0 +1,24 @@
+{
+  "intent": "Verify SAVE20 remains applied after checkout fails and I retry",
+  "stepLabels": [
+    "Add to cart",
+    "Type coupon code",
+    "Apply coupon",
+    "Checkout",
+    "Place order",
+    "Retry",
+    "Wait for cart"
+  ],
+  "observedFacts": [
+    {
+      "id": "a1",
+      "fact": "Text 'SAVE20 applied' visible in the final cart state"
+    },
+    {
+      "id": "a2",
+      "fact": "Text 'Network error. Please try again.' visible after placing the order"
+    }
+  ],
+  "assertionCount": 2,
+  "passed": true
+}

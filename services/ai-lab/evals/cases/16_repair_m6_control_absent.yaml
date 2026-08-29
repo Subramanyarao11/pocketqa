@@ -1,0 +1,11 @@
+id: repair-selector-m6_control_absent
+task: repair_selector
+request_file: mutations/m6_control_absent.json
+notes: >
+  The control is genuinely gone. Proposing the least implausible node on the
+  screen is worse than proposing nothing, because a self-heal that retargets a
+  test at the wrong control fails silently and forever.
+expect:
+  insufficient_evidence: true
+  selected_ids: []
+  max_latency_ms: 200

@@ -1,0 +1,13 @@
+id: name-test-coupon-retry
+task: name_test
+request_file: coupon-retry/name_test.request.json
+notes: >
+  The name is vocabulary-constrained to words present in the evidence, so a
+  fabricated product term is rejected by the same merge rule as a fabricated
+  candidate id. This case only checks the name is grounded and non-empty; the
+  interesting comparison is what the models write, in `--engine all`.
+expect:
+  insufficient_evidence: false
+  name_nonempty: true
+  summary_mentions: ["step", "assertion"]
+  max_latency_ms: 200

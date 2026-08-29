@@ -1,0 +1,12 @@
+id: explain-failure-assertion-regression
+task: explain_failure
+request_file: coupon-retry/explain_failure.request.json
+notes: >
+  The explanation must be built from supplied facts only. `cited_subset_of` is
+  the grounding check; `summary_mentions` confirms it names what was expected and
+  what was observed instead.
+expect:
+  cited_subset_of: [f1, f2, f3, f4, f5]
+  summary_mentions: ["SAVE20 applied", "Coupon removed"]
+  insufficient_evidence: false
+  max_latency_ms: 200

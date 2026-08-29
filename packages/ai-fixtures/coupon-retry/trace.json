@@ -1,0 +1,55 @@
+{
+  "targetPackage": "com.techphantoms.pocketqa.demoshop",
+  "actions": [
+    {
+      "order": 1,
+      "kind": "TAP",
+      "label": "Add to cart",
+      "beforeStateId": "s2",
+      "afterStateId": "s3"
+    },
+    {
+      "order": 2,
+      "kind": "TYPE_TEXT",
+      "label": "Type coupon code",
+      "value": "SAVE20",
+      "beforeStateId": "s3",
+      "afterStateId": "s4"
+    },
+    {
+      "order": 3,
+      "kind": "TAP",
+      "label": "Apply coupon",
+      "beforeStateId": "s4",
+      "afterStateId": "s5"
+    },
+    {
+      "order": 4,
+      "kind": "TAP",
+      "label": "Checkout",
+      "beforeStateId": "s5",
+      "afterStateId": "s6"
+    },
+    {
+      "order": 5,
+      "kind": "TAP",
+      "label": "Place order",
+      "beforeStateId": "s6",
+      "afterStateId": "s7"
+    },
+    {
+      "order": 6,
+      "kind": "TAP",
+      "label": "Retry",
+      "beforeStateId": "s7",
+      "afterStateId": "s8"
+    },
+    {
+      "order": 7,
+      "kind": "WAIT_FOR_IDLE",
+      "label": "Wait for cart",
+      "beforeStateId": "s8",
+      "afterStateId": "s9"
+    }
+  ]
+}

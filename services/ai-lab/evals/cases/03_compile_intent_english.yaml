@@ -1,0 +1,11 @@
+id: compile-intent-english
+task: compile_intent
+request_file: coupon-retry/compile_intent.request.json
+notes: >
+  Two precise assertions beat six loose ones. a1 is the intent itself; a2 is the
+  precondition the intent names ("after checkout fails").
+expect:
+  selected_ids: [a1, a2]
+  must_not_contain: [a3, a5]
+  insufficient_evidence: false
+  max_latency_ms: 200

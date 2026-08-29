@@ -1,0 +1,136 @@
+{
+  "stateId": "s5",
+  "windowTitle": "Cart",
+  "displayWidthDp": 411.0,
+  "displayHeightDp": 891.0,
+  "nodes": [
+    {
+      "nodeId": "c_title",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Cart",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.4,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "c_item",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Wireless earbuds",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.18,
+        "width": 0.6,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "c_field",
+      "role": "INPUT",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": true,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "resourceId": "com.techphantoms.pocketqa.demoshop:id/couponInput",
+      "hintText": "Coupon code",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.42,
+        "width": 0.55,
+        "height": 0.08
+      }
+    },
+    {
+      "nodeId": "c_apply",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "text": "Apply",
+      "bounds": {
+        "x": 0.68,
+        "y": 0.42,
+        "width": 0.26,
+        "height": 0.08
+      }
+    },
+    {
+      "nodeId": "c_save",
+      "role": "SWITCH",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": true,
+      "focusable": true,
+      "ancestorLabels": [],
+      "contentDescription": "Save this coupon",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.54,
+        "width": 0.3,
+        "height": 0.08
+      },
+      "checked": false
+    },
+    {
+      "nodeId": "c_total",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Total Rs 399",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.66,
+        "width": 0.5,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "c_checkout",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "text": "Checkout",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.8,
+        "width": 0.9,
+        "height": 0.09
+      }
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+id: repair-selector-m14_disabled
+task: repair_selector
+request_file: mutations/m14_disabled.json
+expect:
+  top1: n_apply
+  insufficient_evidence: false
+  max_latency_ms: 200

@@ -1,0 +1,7 @@
+id: repair-selector-m9_sibling_reorder
+task: repair_selector
+request_file: mutations/m9_sibling_reorder.json
+expect:
+  top1: n_apply
+  insufficient_evidence: false
+  max_latency_ms: 200

@@ -1,0 +1,7 @@
+id: repair-selector-m10_ancestor_renamed
+task: repair_selector
+request_file: mutations/m10_ancestor_renamed.json
+expect:
+  top1: n_apply
+  insufficient_evidence: false
+  max_latency_ms: 200

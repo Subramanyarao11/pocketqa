@@ -1,0 +1,16 @@
+{
+  "goal": "Find a nearby checkout state we forgot to test",
+  "stateSummary": "Cart with SAVE20 applied; a promising unvisited branch remains",
+  "remainingActions": 0,
+  "safeCandidates": [
+    {
+      "proposalId": "p1",
+      "label": "Open coupon details",
+      "risk": "LOW",
+      "novelty": 0.9,
+      "reversibleLikelihood": 0.9,
+      "selectorStability": 0.9,
+      "visitCount": 0
+    }
+  ]
+}

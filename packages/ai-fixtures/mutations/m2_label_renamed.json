@@ -1,0 +1,140 @@
+{
+  "brokenSelector": {
+    "id": "sel_apply",
+    "kind": "RESOURCE_ID",
+    "resourceId": "com.techphantoms.pocketqa.demoshop:id/applyCoupon",
+    "text": "Apply",
+    "role": "BUTTON"
+  },
+  "originalNode": {
+    "nodeId": "n_apply",
+    "role": "BUTTON",
+    "enabled": true,
+    "visible": true,
+    "clickable": true,
+    "editable": false,
+    "checkable": false,
+    "focusable": true,
+    "ancestorLabels": [
+      "Cart"
+    ],
+    "resourceId": "com.techphantoms.pocketqa.demoshop:id/applyCoupon",
+    "text": "Apply",
+    "bounds": {
+      "x": 0.72,
+      "y": 0.42,
+      "width": 0.2,
+      "height": 0.06
+    }
+  },
+  "currentNodes": [
+    {
+      "nodeId": "n_title",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Cart",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.4,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "n_item",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [
+        "Cart"
+      ],
+      "text": "Wireless earbuds",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.18,
+        "width": 0.6,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "n_field",
+      "role": "INPUT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": true,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [
+        "Cart"
+      ],
+      "resourceId": "com.techphantoms.pocketqa.demoshop:id/couponInput",
+      "hintText": "Coupon code",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.42,
+        "width": 0.6,
+        "height": 0.06
+      }
+    },
+    {
+      "nodeId": "n_total",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [
+        "Cart"
+      ],
+      "text": "Total Rs 499",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.6,
+        "width": 0.5,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "n_apply",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [
+        "Cart"
+      ],
+      "resourceId": "com.techphantoms.pocketqa.demoshop:id/applyCoupon",
+      "text": "Use coupon",
+      "bounds": {
+        "x": 0.72,
+        "y": 0.42,
+        "width": 0.2,
+        "height": 0.06
+      }
+    }
+  ],
+  "allowedNodeIds": [
+    "n_title",
+    "n_item",
+    "n_field",
+    "n_total",
+    "n_apply"
+  ],
+  "intentHint": "Apply the coupon"
+}

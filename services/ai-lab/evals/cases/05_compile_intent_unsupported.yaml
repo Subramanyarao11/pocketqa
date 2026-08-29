@@ -1,0 +1,11 @@
+id: compile-intent-unsupported
+task: compile_intent
+request_file: coupon-retry/compile_intent.unsupported.request.json
+notes: >
+  The intent describes a delivery-address screen this session never visited.
+  Declining is the correct product behaviour; picking the nearest-looking
+  candidate is how a suite silently starts asserting nothing.
+expect:
+  insufficient_evidence: true
+  selected_ids: []
+  max_latency_ms: 200

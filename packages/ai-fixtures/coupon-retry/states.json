@@ -1,0 +1,108 @@
+{
+  "intent": "Verify SAVE20 remains applied after checkout fails and I retry",
+  "targetPackage": "com.techphantoms.pocketqa.demoshop",
+  "states": [
+    {
+      "stateId": "s1",
+      "sequence": 1,
+      "windowTitle": "Products",
+      "visibleText": [
+        "Products",
+        "Wireless earbuds",
+        "Rs 499",
+        "Add to cart"
+      ]
+    },
+    {
+      "stateId": "s2",
+      "sequence": 2,
+      "windowTitle": "Wireless earbuds",
+      "visibleText": [
+        "Wireless earbuds",
+        "Rs 499",
+        "Add to cart"
+      ]
+    },
+    {
+      "stateId": "s3",
+      "sequence": 3,
+      "windowTitle": "Cart",
+      "visibleText": [
+        "Cart",
+        "Wireless earbuds",
+        "Rs 499",
+        "Coupon code",
+        "Apply",
+        "Total Rs 499"
+      ]
+    },
+    {
+      "stateId": "s4",
+      "sequence": 4,
+      "windowTitle": "Cart",
+      "visibleText": [
+        "Cart",
+        "SAVE20",
+        "Apply",
+        "Total Rs 499"
+      ]
+    },
+    {
+      "stateId": "s5",
+      "sequence": 5,
+      "windowTitle": "Cart",
+      "visibleText": [
+        "Cart",
+        "SAVE20 applied",
+        "Discount Rs 100",
+        "Total Rs 399",
+        "Checkout"
+      ]
+    },
+    {
+      "stateId": "s6",
+      "sequence": 6,
+      "windowTitle": "Checkout",
+      "visibleText": [
+        "Checkout",
+        "SAVE20 applied",
+        "Total Rs 399",
+        "Place order"
+      ]
+    },
+    {
+      "stateId": "s7",
+      "sequence": 7,
+      "windowTitle": "Checkout",
+      "visibleText": [
+        "Checkout",
+        "Network error. Please try again.",
+        "Retry",
+        "Total Rs 399"
+      ]
+    },
+    {
+      "stateId": "s8",
+      "sequence": 8,
+      "windowTitle": "Checkout",
+      "visibleText": [
+        "Checkout",
+        "Loading\u2026",
+        "Total Rs 399"
+      ]
+    },
+    {
+      "stateId": "s9",
+      "sequence": 9,
+      "windowTitle": "Cart",
+      "visibleText": [
+        "Cart",
+        "SAVE20 applied",
+        "Discount Rs 100",
+        "Total Rs 399",
+        "Order ID 8f3a91c2e4b7d6a5",
+        "Continue shopping"
+      ]
+    }
+  ]
+}

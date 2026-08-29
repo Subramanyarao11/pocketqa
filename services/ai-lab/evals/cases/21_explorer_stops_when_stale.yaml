@@ -1,0 +1,9 @@
+id: explorer-stops-when-stale
+task: rank_explorer_candidate
+request_file: explorer/e2_nothing_novel.json
+notes: >
+  Spending an action on a visited branch is worse than stopping with the graph we
+  already have (spec 22.6).
+expect:
+  choice: STOP
+  max_latency_ms: 200

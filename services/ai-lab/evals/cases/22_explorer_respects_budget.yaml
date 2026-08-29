@@ -1,0 +1,10 @@
+id: explorer-respects-budget
+task: rank_explorer_candidate
+request_file: explorer/e3_budget_exhausted.json
+notes: >
+  A highly novel candidate is available and the budget is zero. The budget wins.
+  This is the case that must never regress: the mission budget is a safety
+  control, not a hint.
+expect:
+  choice: STOP
+  max_latency_ms: 200

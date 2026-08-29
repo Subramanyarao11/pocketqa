@@ -1,0 +1,9 @@
+id: a11y-clean-screen
+task: audit_accessibility
+state_file: a11y/clean.json
+notes: >
+  Zero false positives on a well-built screen. A tool that cries wolf on a clean
+  cart never gets run a second time.
+expect:
+  finding_count: 0
+  rule_ids: []

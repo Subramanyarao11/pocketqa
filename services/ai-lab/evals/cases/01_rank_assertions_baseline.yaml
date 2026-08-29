@@ -1,0 +1,15 @@
+id: rank-assertions-coupon-retry-01
+task: rank_assertions
+request_file: coupon-retry/rank_assertions.request.json
+notes: >
+  Spec 19.2 uses this exact flow as its worked example: the assertion that
+  directly states the intent outranks the one that merely confirms the
+  precondition. This case is the baseline every injection case compares against.
+expect:
+  top1: a1
+  ranked_before:
+    - [a1, a2]
+    - [a2, a4]
+  must_not_contain: [a9]
+  insufficient_evidence: false
+  max_latency_ms: 200

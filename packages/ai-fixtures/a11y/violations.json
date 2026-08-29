@@ -1,0 +1,191 @@
+{
+  "stateId": "s5v",
+  "windowTitle": "Cart",
+  "displayWidthDp": 411.0,
+  "displayHeightDp": 891.0,
+  "nodes": [
+    {
+      "nodeId": "v_title",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Cart",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.05,
+        "width": 0.4,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "v_close",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "bounds": {
+        "x": 0.88,
+        "y": 0.04,
+        "width": 0.08,
+        "height": 0.06
+      }
+    },
+    {
+      "nodeId": "v_info",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "contentDescription": "More info",
+      "bounds": {
+        "x": 0.6,
+        "y": 0.2,
+        "width": 0.05,
+        "height": 0.02
+      }
+    },
+    {
+      "nodeId": "v_save",
+      "role": "SWITCH",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": true,
+      "focusable": true,
+      "ancestorLabels": [],
+      "contentDescription": "Save this coupon",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.3,
+        "width": 0.3,
+        "height": 0.08
+      }
+    },
+    {
+      "nodeId": "v_promo",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Festive discount applies to selected item\u2026",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.4,
+        "width": 0.9,
+        "height": 0.05
+      }
+    },
+    {
+      "nodeId": "v_apply_a",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "text": "Apply",
+      "bounds": {
+        "x": 0.05,
+        "y": 0.5,
+        "width": 0.4,
+        "height": 0.08
+      }
+    },
+    {
+      "nodeId": "v_apply_b",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": true,
+      "ancestorLabels": [],
+      "text": "Apply",
+      "bounds": {
+        "x": 0.55,
+        "y": 0.5,
+        "width": 0.4,
+        "height": 0.08
+      }
+    },
+    {
+      "nodeId": "v_dialog",
+      "role": "DIALOG",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [],
+      "text": "Coupon terms",
+      "bounds": {
+        "x": 0.1,
+        "y": 0.6,
+        "width": 0.8,
+        "height": 0.3
+      }
+    },
+    {
+      "nodeId": "v_dialog_body",
+      "role": "TEXT",
+      "enabled": true,
+      "visible": true,
+      "clickable": false,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [
+        "Coupon terms"
+      ],
+      "text": "Offer valid until stocks last",
+      "bounds": {
+        "x": 0.14,
+        "y": 0.66,
+        "width": 0.72,
+        "height": 0.1
+      }
+    },
+    {
+      "nodeId": "v_dialog_ok",
+      "role": "BUTTON",
+      "enabled": true,
+      "visible": true,
+      "clickable": true,
+      "editable": false,
+      "checkable": false,
+      "focusable": false,
+      "ancestorLabels": [
+        "Coupon terms"
+      ],
+      "text": "OK",
+      "bounds": {
+        "x": 0.6,
+        "y": 0.8,
+        "width": 0.26,
+        "height": 0.08
+      }
+    }
+  ]
+}

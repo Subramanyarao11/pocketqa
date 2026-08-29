@@ -1,0 +1,52 @@
+{
+  "intent": "Verify SAVE20 remains applied after checkout fails and I retry",
+  "failureClass": "ASSERTION_REGRESSION",
+  "stepLabel": "Assert SAVE20 applied",
+  "failedAssertion": {
+    "label": "SAVE20 applied is visible",
+    "expected": "SAVE20 applied",
+    "observed": "Coupon removed",
+    "evidenceStateId": "s9"
+  },
+  "facts": [
+    {
+      "id": "f1",
+      "source": "ASSERTION",
+      "statement": "The final cart state contains 'Coupon removed' where 'SAVE20 applied' was recorded"
+    },
+    {
+      "id": "f2",
+      "source": "STATE_DIFF",
+      "statement": "Total changed from Rs 399 in the approved run to Rs 499 in this run"
+    },
+    {
+      "id": "f3",
+      "source": "SELECTOR",
+      "statement": "Every selector in the test resolved to exactly one node"
+    },
+    {
+      "id": "f4",
+      "source": "TIMING",
+      "statement": "The cart settled in 1.2s against a 5s budget"
+    },
+    {
+      "id": "f5",
+      "source": "DEVICE",
+      "statement": "Run executed offline with airplane mode enabled"
+    }
+  ],
+  "allowedFactIds": [
+    "f1",
+    "f2",
+    "f3",
+    "f4",
+    "f5"
+  ],
+  "deviceContext": {
+    "manufacturer": "iQOO",
+    "androidVersion": "15",
+    "locale": "en-IN",
+    "orientation": "PORTRAIT",
+    "networkState": "AIRPLANE_MODE"
+  }
+}

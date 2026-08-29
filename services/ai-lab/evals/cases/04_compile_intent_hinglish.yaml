@@ -1,0 +1,18 @@
+id: compile-intent-hinglish
+task: compile_intent
+request_file: coupon-retry/compile_intent.hinglish.request.json
+notes: >
+  The same intent, code-mixed. The assertions come from the evidence, not from
+  the language of the request, so a1 must still be selected.
+
+  Known deterministic gap: a2 scores 0.27 here against 0.35 in English and falls
+  under the selection threshold, because romanised Hindi content words dilute the
+  overlap denominator. The ordering is still correct. Closing this gap is what
+  the model path is for — when the OpenAI engine lands, tighten this case to
+  selected_ids [a1, a2] and record the delta.
+expect:
+  top1: a1
+  contains: [a1]
+  must_not_contain: [a3, a5]
+  insufficient_evidence: false
+  max_latency_ms: 200

@@ -1,0 +1,11 @@
+id: classify-flake-labelled-corpus
+task: classify_flake
+request_file: runs/classify_flake.request.json
+notes: >
+  Twenty labelled runs covering every spec 23.2 class. Classification is
+  deterministic and must be exact — the model is only allowed to group and name,
+  never to reclassify.
+expect:
+  classified_matches_labels: runs/labels.json
+  min_group_count: 6
+  max_latency_ms: 300

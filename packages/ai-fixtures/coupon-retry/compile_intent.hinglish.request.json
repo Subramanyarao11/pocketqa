@@ -1,0 +1,93 @@
+{
+  "intentText": "Checkout fail hone ke baad bhi SAVE20 coupon apply rehna chahiye retry ke baad",
+  "targetPackage": "com.techphantoms.pocketqa.demoshop",
+  "candidates": [
+    {
+      "id": "a1",
+      "fact": "Text 'SAVE20 applied' visible in the final cart state",
+      "sourceStateId": "s9",
+      "allowedKinds": [
+        "VISIBLE",
+        "TEXT_CONTAINS"
+      ],
+      "observedValue": "SAVE20 applied",
+      "selectorLabel": "SAVE20 applied",
+      "isEndState": true
+    },
+    {
+      "id": "a2",
+      "fact": "Text 'Network error. Please try again.' visible after placing the order",
+      "sourceStateId": "s7",
+      "allowedKinds": [
+        "VISIBLE"
+      ],
+      "observedValue": "Network error. Please try again.",
+      "selectorLabel": "Network error",
+      "isEndState": false
+    },
+    {
+      "id": "a3",
+      "fact": "Text 'Loading\u2026' visible while the retry is in flight",
+      "sourceStateId": "s8",
+      "allowedKinds": [
+        "VISIBLE"
+      ],
+      "observedValue": "Loading\u2026",
+      "isEndState": false
+    },
+    {
+      "id": "a4",
+      "fact": "Text 'Total Rs 399' visible in the final cart state",
+      "sourceStateId": "s9",
+      "allowedKinds": [
+        "VISIBLE",
+        "TEXT_EQUALS"
+      ],
+      "observedValue": "Total Rs 399",
+      "selectorLabel": "Total",
+      "isEndState": true
+    },
+    {
+      "id": "a5",
+      "fact": "Text 'Order ID 8f3a91c2e4b7d6a5' visible in the final cart state",
+      "sourceStateId": "s9",
+      "allowedKinds": [
+        "VISIBLE"
+      ],
+      "observedValue": "Order ID 8f3a91c2e4b7d6a5",
+      "isEndState": true
+    },
+    {
+      "id": "a6",
+      "fact": "Text 'Continue shopping' visible in the final cart state",
+      "sourceStateId": "s9",
+      "allowedKinds": [
+        "VISIBLE"
+      ],
+      "observedValue": "Continue shopping",
+      "isEndState": true
+    },
+    {
+      "id": "a7",
+      "fact": "Text 'Discount Rs 100' visible in the final cart state",
+      "sourceStateId": "s9",
+      "allowedKinds": [
+        "VISIBLE",
+        "TEXT_CONTAINS"
+      ],
+      "observedValue": "Discount Rs 100",
+      "isEndState": true
+    }
+  ],
+  "allowedCandidateIds": [
+    "a1",
+    "a2",
+    "a3",
+    "a4",
+    "a5",
+    "a6",
+    "a7"
+  ],
+  "languageCode": "hi-IN",
+  "maxAssertions": 3
+}

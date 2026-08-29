@@ -1,0 +1,45 @@
+{
+  "intent": "Verify SAVE20 remains applied after checkout fails and I retry",
+  "testName": "Coupon survives checkout retry",
+  "stepLabels": [
+    "Add to cart",
+    "Type coupon code",
+    "Apply coupon",
+    "Checkout",
+    "Place order",
+    "Retry",
+    "Wait for cart"
+  ],
+  "dimensions": [
+    "NETWORK",
+    "LOCALE",
+    "INPUT",
+    "SAVED_STATE",
+    "PERMISSION"
+  ],
+  "allowedDimensionValues": {
+    "NETWORK": [
+      "OFFLINE",
+      "SLOW_3G",
+      "DROP_DURING_REQUEST"
+    ],
+    "LOCALE": [
+      "hi-IN",
+      "ta-IN",
+      "ar-EG"
+    ],
+    "INPUT": [
+      "EMPTY",
+      "MAX_LENGTH",
+      "LEADING_TRAILING_SPACE"
+    ],
+    "SAVED_STATE": [
+      "PROCESS_DEATH_RESTORE",
+      "BACKGROUND_10_MIN"
+    ],
+    "PERMISSION": [
+      "NOTIFICATIONS_DENIED"
+    ]
+  },
+  "maxVariants": 6
+}

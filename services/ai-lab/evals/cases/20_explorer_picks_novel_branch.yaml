@@ -1,0 +1,7 @@
+id: explorer-picks-novel-branch
+task: rank_explorer_candidate
+request_file: explorer/e1_novel_branch.json
+notes: Spec 22.3 weights novelty highest; p1 is unvisited and names the goal.
+expect:
+  choice: p1
+  max_latency_ms: 200

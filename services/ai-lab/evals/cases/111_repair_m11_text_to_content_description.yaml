@@ -1,0 +1,7 @@
+id: repair-selector-m11_text_to_content_description
+task: repair_selector
+request_file: mutations/m11_text_to_content_description.json
+expect:
+  top1: n_apply
+  insufficient_evidence: false
+  max_latency_ms: 200

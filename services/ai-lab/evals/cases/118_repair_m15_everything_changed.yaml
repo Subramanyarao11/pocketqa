@@ -1,0 +1,11 @@
+id: repair-selector-m15_everything_changed
+task: repair_selector
+request_file: mutations/m15_everything_changed.json
+notes: >
+  Renamed id, renamed label, moved, new ancestor — nothing corresponds. The
+  ranker must decline rather than reach for the nearest node, which here would be
+  the coupon input field simply because it is on screen.
+expect:
+  insufficient_evidence: true
+  selected_ids: []
+  max_latency_ms: 200

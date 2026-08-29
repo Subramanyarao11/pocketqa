@@ -1,0 +1,34 @@
+{
+  "goal": "Find a nearby checkout state we forgot to test",
+  "stateSummary": "Cart with SAVE20 applied; checkout available; coupon details unopened",
+  "remainingActions": 3,
+  "safeCandidates": [
+    {
+      "proposalId": "p1",
+      "label": "Open coupon details",
+      "risk": "LOW",
+      "novelty": 0.8,
+      "reversibleLikelihood": 0.9,
+      "selectorStability": 0.9,
+      "visitCount": 0
+    },
+    {
+      "proposalId": "p2",
+      "label": "Return to products",
+      "risk": "LOW",
+      "novelty": 0.3,
+      "reversibleLikelihood": 0.95,
+      "selectorStability": 0.9,
+      "visitCount": 2
+    },
+    {
+      "proposalId": "p3",
+      "label": "Change quantity",
+      "risk": "LOW",
+      "novelty": 0.5,
+      "reversibleLikelihood": 0.7,
+      "selectorStability": 0.6,
+      "visitCount": 0
+    }
+  ]
+}

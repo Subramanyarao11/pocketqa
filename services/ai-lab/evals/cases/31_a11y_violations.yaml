@@ -1,0 +1,12 @@
+id: a11y-violations
+task: audit_accessibility
+state_file: a11y/violations.json
+notes: >
+  One screen carrying every rule. The findings are deterministic; the model only
+  rates and explains them, so severity is asserted against the rule defaults.
+expect:
+  rule_ids: [A11Y-001, A11Y-002, A11Y-003, A11Y-004, A11Y-005, A11Y-006]
+  severity_of:
+    f1: CRITICAL
+  insufficient_evidence: false
+  max_latency_ms: 200

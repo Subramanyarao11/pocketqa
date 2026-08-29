@@ -1,0 +1,11 @@
+id: edge-cases-coupon-retry
+task: generate_edge_cases
+request_file: coupon-retry/generate_edge_cases.request.json
+notes: >
+  The matrix is capped by the schema, not by a prompt instruction. Network and
+  locale must appear: this flow retries a request and renders a currency total,
+  so both have a specific reason to break it.
+expect:
+  contains: ["NETWORK:OFFLINE", "LOCALE:hi-IN"]
+  insufficient_evidence: false
+  max_latency_ms: 200

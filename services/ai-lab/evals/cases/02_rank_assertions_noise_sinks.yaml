@@ -1,0 +1,13 @@
+id: rank-assertions-noise-sinks
+task: rank_assertions
+request_file: coupon-retry/rank_assertions.request.json
+notes: >
+  Transient loading text (a3) and a per-run order id (a5) are the two candidates
+  a naive lexical ranker promotes, because both share vocabulary with the flow.
+  Spec 17.2 requires both to be filtered; here they must land last.
+expect:
+  bottom_ids: [a3, a5]
+  ranked_before:
+    - [a4, a3]
+    - [a6, a5]
+  max_latency_ms: 200
