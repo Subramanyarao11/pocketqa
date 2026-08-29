@@ -149,7 +149,16 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
     override fun submitVoiceTranscript(intentId: String, transcript: String, promise: Promise) = guard(promise) {
         promise.resolve(inference.transcribe(intentId, transcript))
     }
-    override fun checkpointActiveOperation(promise: Promise) = guard(promise) { repo.checkpoint(); promise.resolve(null) }
+    override fun checkpointActiveOperation(promise: Promise) = guard(promise) {
+        repo.checkpoint()
+        // Rehydrate the JS layer too. CAPTURE_PROGRESS is only pushed when the
+        // service observes a new stable state, so a screen that was backgrounded
+        // during the demonstration comes back showing zero steps — and the Finish
+        // button is disabled below two, which made a completed capture
+        // un-finishable.
+        capture.emitProgressFor(repo)
+        promise.resolve(null)
+    }
 
     // ---- Missions --------------------------------------------------------------
 

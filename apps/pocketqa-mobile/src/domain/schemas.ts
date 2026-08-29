@@ -82,6 +82,17 @@ export const TestStep = z.object({
   afterStateId: z.string(),
   assertions: z.array(Assertion).default([]),
   needsHumanCorrection: z.boolean().default(false),
+  /** How the step's target was determined — CAP-07. `event` means the platform
+   *  reported the interaction; `inferred` means it was deduced from the state
+   *  change, which is the normal path on a Compose target. */
+  attribution: z
+    .object({
+      method: z.enum(["event", "inferred"]),
+      confidence: z.number(),
+      signals: z.array(z.string()).default([]),
+      alternatives: z.array(z.string()).default([]),
+    })
+    .optional(),
 });
 export type TestStep = z.infer<typeof TestStep>;
 

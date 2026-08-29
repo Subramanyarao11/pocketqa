@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { AppState, StyleSheet, Text, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
@@ -42,6 +42,22 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
 
   const stepCount = activeProgress?.stepCount ?? 0;
   const state = activeProgress?.state ?? "recording";
+
+  // The user spends the demonstration inside the target app, so this screen is
+  // backgrounded for the whole session and misses every pushed progress event.
+  // Ask for the current state whenever it comes back into focus; without this it
+  // reports zero steps and Finish stays disabled on a capture that worked.
+  useEffect(() => {
+    const refresh = () => { PocketQaNative.checkpointActiveOperation().catch(() => {}); };
+    refresh();
+    // AppState, not navigation focus: this screen never *loses* navigation focus
+    // — the whole app is backgrounded while the operator works in the target app,
+    // so "focus" never fires again and the screen stays on its stale zero.
+    const sub = AppState.addEventListener("change", (next) => {
+      if (next === "active") refresh();
+    });
+    return () => sub.remove();
+  }, []);
 
   // Session ended by a hard stop — auto-return home after the user acknowledges.
   useEffect(() => {

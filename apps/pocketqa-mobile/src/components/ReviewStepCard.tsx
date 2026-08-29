@@ -60,6 +60,27 @@ export function ReviewStepCard({
       </TouchableOpacity>
       {expanded && (
         <View style={styles.detail}>
+          {/* CAP-08. "View candidates" used to live inside the `step.selector`
+              block, so it was hidden in exactly the case that needs it: a step
+              with no resolved target. On a Compose capture that is every step,
+              which left the review screen with a "Needs correction" badge and no
+              way to act on it. */}
+          {!step.selector && (
+            <View style={styles.rowBetween}>
+              <Text style={typography.eyebrow}>No selector resolved</Text>
+              {onOpenSelectors && (
+                <TouchableOpacity onPress={onOpenSelectors} accessibilityLabel="Choose a selector">
+                  <Text style={styles.link}>Choose target</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+          {step.attribution?.method === "inferred" && (
+            <Text style={typography.bodyMuted}>
+              {`Inferred from the screen change · ${(step.attribution.confidence * 100).toFixed(0)}%`}
+              {step.attribution.signals?.length ? ` · ${step.attribution.signals.join("; ")}` : ""}
+            </Text>
+          )}
           {step.selector && (
             <>
               <View style={styles.rowBetween}>

@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -157,6 +158,10 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         beforeStateId: String,
         afterStateId: String,
         at: Long,
+        method: String = "event",
+        confidence: Double = 1.0,
+        signals: List<String> = emptyList(),
+        alternatives: List<String> = emptyList(),
     ) = runBlocking {
         val payload = buildJsonObject {
             put("action", JsonPrimitive(action))
@@ -165,6 +170,14 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             if (input != null) put("input", JsonPrimitive(input))
             put("beforeStateId", JsonPrimitive(beforeStateId))
             put("afterStateId", JsonPrimitive(afterStateId))
+            // CAP-07 — how this step's target was determined, so review can
+            // explain itself rather than presenting a bare selector.
+            put("attribution", buildJsonObject {
+                put("method", JsonPrimitive(method))
+                put("confidence", JsonPrimitive(confidence))
+                put("signals", buildJsonArray { for (x in signals) add(JsonPrimitive(x)) })
+                put("alternatives", buildJsonArray { for (x in alternatives) add(JsonPrimitive(x)) })
+            })
         }
         dao.insertCaptureEvent(CaptureEventRow(
             id = "evt_" + UUID.randomUUID().toString().take(8),
@@ -581,6 +594,15 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                     ?.map { it.jsonObject }
                     ?.firstOrNull { it["nodeId"]?.jsonPrimitive?.contentOrNull == targetNodeId }
 
+                val attribution = ev["attribution"]?.jsonObject
+                val confidence = attribution?.get("confidence")?.jsonPrimitive?.doubleOrNull ?: 1.0
+                // CAP-07. Previously any unresolved node flagged the step, which
+                // meant a Compose capture flagged every step and Approve could
+                // never be reached. The gate is now the confidence band: a
+                // confidently attributed step is reviewable as-is, an uncertain
+                // one carries its alternatives to the human.
+                val needsCorrection = targetNode == null || confidence < 0.75
+
                 add(buildJsonObject {
                     put("id", JsonPrimitive("step_$i"))
                     put("order", JsonPrimitive(i))
@@ -588,10 +610,11 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                     put("label", JsonPrimitive(deriveLabel(ev, targetNode)))
                     ev["input"]?.let { put("input", it) }
                     if (targetNode != null) put("selector", rankSelector(targetNode, beforeState))
+                    attribution?.let { put("attribution", it) }
                     put("assertions", JsonArray(emptyList()))
                     put("beforeStateId", JsonPrimitive(beforeStateId))
                     put("afterStateId", JsonPrimitive(afterStateId))
-                    put("needsHumanCorrection", JsonPrimitive(targetNode == null))
+                    put("needsHumanCorrection", JsonPrimitive(needsCorrection))
                 })
             }
         }

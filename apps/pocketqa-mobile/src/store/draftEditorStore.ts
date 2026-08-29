@@ -42,8 +42,15 @@ export const useDraftEditorStore = create<DraftEditorState>((set, get) => ({
     }
   },
   async approve() {
-    const { draft } = get();
+    // Persist first. validateDraft reads the draft from Room, while edits made
+    // during review live only in this store until save() runs — so approving
+    // straight after adding an assertion validated the *old* draft and reported
+    // "At least one end-state assertion is required" with the assertion plainly
+    // visible on screen. You cannot validate what you have not persisted.
+    if (get().dirty) await get().save();
+    const { draft, errors } = get();
     if (!draft) throw new Error("no draft");
+    if (errors.length) throw new Error("save failed");
     const validation = await PocketQaNative.validateDraft(draft.id);
     if (!validation.valid) {
       set({ errors: validation.errors, warnings: validation.warnings });
