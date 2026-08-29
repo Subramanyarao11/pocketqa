@@ -118,7 +118,11 @@ The intended structure is:
 pocketqa/
 ├── apps/
 │   ├── pocketqa-mobile/       # React Native app + native Kotlin modules
-│   └── demo-shop/             # Deterministic target app and fixtures
+│   ├── demo-shop/             # Deterministic target app and fixtures
+│   ├── demo-bank/             # Target: sensitive input, policy stops, dialogs
+│   ├── demo-tasks/            # Target: View/XML + RecyclerView (real click events)
+│   ├── demo-settings/         # Target: live filtering, control variety, deep nav
+│   └── DEMO_APPS.md           # What each target app is designed to stress
 ├── packages/
 │   ├── schemas/               # Canonical cross-layer JSON schemas
 │   ├── maestro-exporter/

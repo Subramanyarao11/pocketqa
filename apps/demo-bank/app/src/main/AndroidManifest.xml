@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Fixtures this app supports, read by PocketQA at target-selection time.
+      `low-balance` and `transfer-declined` exist so a regression test can be
+      demonstrated against a failure path without needing a real one to occur.
+    -->
+    <application
+        android:allowBackup="true"
+        android:label="Demo Bank"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <meta-data
+            android:name="pocketqa.fixtures"
+            android:value="reset,low-balance,transfer-declined,locked-out" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="Demo Bank">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="demobank" android:host="reset" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
