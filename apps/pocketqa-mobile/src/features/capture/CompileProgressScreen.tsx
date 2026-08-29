@@ -6,7 +6,7 @@ import {
   StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type CompileProgress, type PocketQaEvent } from "@native";
-import { spacing, typography } from "@theme";
+import { useAppTheme } from "@theme";
 
 const INITIAL_STAGES: CompileProgress["stages"] = [
   { id: "finalising", label: "Finalising evidence", state: "pending" },
@@ -18,6 +18,7 @@ const INITIAL_STAGES: CompileProgress["stages"] = [
 ];
 
 export function CompileProgressScreen({ navigation, route }: ScreenProps<"CompileProgress">) {
+  const { typography } = useAppTheme();
   const [job, setJob] = useState<CompileProgress>({
     jobId: route.params.compileJobId,
     engine: "deterministic-local",
@@ -39,7 +40,7 @@ export function CompileProgressScreen({ navigation, route }: ScreenProps<"Compil
 
   return (
     <>
-      <TopBar title="Compiling" subtitle="§7.8 · deterministic pipeline" />
+      <TopBar title="Building your test" subtitle="Deterministic local pipeline" />
       <AppScreen>
         <Card>
           <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ArrowRight, Check, Keyboard, Mic, Search } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
   StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type TargetApp } from "@native";
-import { colors, radius, spacing, typography } from "@theme";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 // Prefilling a coupon-retry intent made every test start life describing Demo
 // Shop, whatever app the operator picked — a Calculator capture arrived at review
@@ -25,6 +26,8 @@ const VOICE_TRANSCRIPTS = [
 type VoiceState = "idle" | "recording" | "preview" | "confirmed";
 
 export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [intent, setIntent] = useState(DEFAULT_INTENT);
   const [apps, setApps] = useState<TargetApp[]>([]);
   const [appQuery, setAppQuery] = useState("");
@@ -127,9 +130,12 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
 
   return (
     <>
-      <TopBar title="New test" subtitle="Say what must be true" onBack={() => navigation.goBack()} />
+      <TopBar title="New test" subtitle="Define intent and capture scope" onBack={() => navigation.goBack()} />
       <AppScreen>
-        <Text style={typography.eyebrow}>Intent · 10–500 characters</Text>
+        <View style={styles.sectionIntro}>
+          <Text style={typography.eyebrow}>Test intent</Text>
+          <Text style={typography.bodyMuted}>Describe the behaviour that must remain true in plain language.</Text>
+        </View>
         <View style={styles.modeRow}>
           <TouchableOpacity
             onPress={() => setMode("typed")}
@@ -137,7 +143,8 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             accessibilityRole="radio"
             accessibilityState={{ selected: mode === "typed" }}
           >
-            <Text style={{ color: mode === "typed" ? "#0A0F14" : colors.text }}>Typed</Text>
+            <Keyboard color={mode === "typed" ? colors.onAccent : colors.textMuted} size={16} />
+            <Text style={[styles.tabText, { color: mode === "typed" ? colors.onAccent : colors.text }]}>Typed</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setMode("voice")}
@@ -145,7 +152,8 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             accessibilityRole="radio"
             accessibilityState={{ selected: mode === "voice" }}
           >
-            <Text style={{ color: mode === "voice" ? "#0A0F14" : colors.text }}>Voice</Text>
+            <Mic color={mode === "voice" ? colors.onAccent : colors.textMuted} size={16} />
+            <Text style={[styles.tabText, { color: mode === "voice" ? colors.onAccent : colors.text }]}>Voice</Text>
           </TouchableOpacity>
           {mode === "voice" && <StatusPill label="Preview always shown" tone="cyan" />}
         </View>
@@ -215,25 +223,36 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
         />
         <Text style={typography.metadata}>{intent.length} / 500</Text>
 
-        <Text style={[typography.eyebrow, { marginTop: spacing.md }]}>Target app · allowlist only</Text>
-        <TextInput
-          style={styles.input}
-          value={appQuery}
-          onChangeText={setAppQuery}
-          placeholder={`Search ${apps.length} apps`}
-          placeholderTextColor={colors.textDim}
-          accessibilityLabel="Search target apps"
-        />
+        <View style={styles.sectionIntro}>
+          <Text style={typography.eyebrow}>Target app</Text>
+          <Text style={typography.bodyMuted}>Only the app you choose is in capture scope.</Text>
+        </View>
+        <View style={styles.searchWrap}>
+          <Search color={colors.textDim} size={18} />
+          <TextInput
+            style={styles.searchInput}
+            value={appQuery}
+            onChangeText={setAppQuery}
+            placeholder={`Search ${apps.length} installed apps`}
+            placeholderTextColor={colors.textDim}
+            accessibilityLabel="Search target apps"
+          />
+        </View>
         {visibleApps.map((app) => (
           <TouchableOpacity
             key={app.packageName}
-            onPress={() => setPkg(app.packageName)}
+            onPress={() => {
+              setPkg(app.packageName);
+              if (!app.fixtureIds.includes(fixture)) {
+                setFixture(app.fixtureIds[0] ?? "reset");
+              }
+            }}
             accessibilityRole="radio"
             accessibilityState={{ selected: pkg === app.packageName }}
           >
             <Card tone={pkg === app.packageName ? "callout" : "surface"}>
               <View style={styles.rowBetween}>
-                <View>
+                <View style={styles.appCopy}>
                   <Text style={typography.h2}>{app.displayName}</Text>
                   <Text style={typography.metadata}>{app.packageName}</Text>
                 </View>
@@ -259,7 +278,7 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             for it. An app only has fixtures if it exposes a reset hook. */}
         {fixturesForSelectedApp.length > 0 && (
           <>
-        <Text style={[typography.eyebrow, { marginTop: spacing.md }]}>Fixture</Text>
+        <Text style={typography.eyebrow}>Starting state</Text>
         <Card>
           {fixturesForSelectedApp.map((f) => (
             <TouchableOpacity
@@ -286,7 +305,7 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
           accessibilityState={{ checked: ack }}
         >
           <View style={[styles.box, { borderColor: ack ? colors.lime : colors.borderStrong, backgroundColor: ack ? colors.lime : "transparent" }]}>
-            {ack && <Text style={{ color: "#0A0F14", fontWeight: "900" }}>✓</Text>}
+            {ack && <Check color={colors.onAccent} size={16} strokeWidth={3} />}
           </View>
           <Text style={[typography.body, { flex: 1 }]}>
             I acknowledge that PocketQA will capture screen content in this app for the duration of the session.
@@ -298,6 +317,7 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
         <View style={{ flex: 1 }} />
         <PrimaryButton
           label="Continue"
+          icon={<ArrowRight color={colors.onAccent} size={17} />}
           disabled={invalid}
           onPress={async () => {
             if (!pkg) return;
@@ -315,34 +335,67 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
   );
 }
 
-const styles = StyleSheet.create({
-  modeRow: { flexDirection: "row", gap: spacing.sm, alignItems: "center", marginBottom: spacing.sm },
-  tab: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.pill, backgroundColor: colors.surfaceRaised },
-  tabActive: { backgroundColor: colors.lime },
+const createStyles = ({ colors }: AppTheme) => ({
+  sectionIntro: { gap: spacing.xs, marginTop: spacing.sm },
+  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center", marginBottom: spacing.sm },
+  tab: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.control,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  tabActive: { backgroundColor: colors.lime, borderColor: colors.lime },
+  tabText: { fontSize: 14, lineHeight: 20, fontWeight: "600" },
   textarea: {
-    minHeight: 96,
+    minHeight: 112,
     padding: spacing.md,
     borderRadius: radius.input,
     borderWidth: 1, borderColor: colors.borderStrong,
     color: colors.text,
+    backgroundColor: colors.surface,
     textAlignVertical: "top",
   },
-  input: {
-    padding: spacing.md,
+  searchWrap: {
+    minHeight: 50,
+    paddingHorizontal: spacing.md,
     borderRadius: radius.input,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    color: colors.text,
-    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
+    backgroundColor: colors.surface,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  searchInput: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    color: colors.text,
+  },
+  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  appCopy: { flex: 1, minWidth: 0 },
   radio: {
     width: 22, height: 22, borderRadius: 11,
     borderWidth: 2, alignItems: "center", justifyContent: "center",
   },
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.lime },
-  fixtureRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.sm },
-  consentRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
-  box: { width: 24, height: 24, borderRadius: 6, borderWidth: 2, alignItems: "center", justifyContent: "center" },
+  fixtureRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
+  consentRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.lg,
+    borderRadius: radius.card,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+  },
+  box: { width: 26, height: 26, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
   transcriptPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm },
   transcriptEdit: {
     minHeight: 72,
@@ -350,6 +403,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.input,
     borderWidth: 1, borderColor: colors.borderStrong,
     color: colors.text,
+    backgroundColor: colors.surface,
     textAlignVertical: "top",
   },
   voiceRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.sm, gap: spacing.sm },

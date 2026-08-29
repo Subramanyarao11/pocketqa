@@ -1,5 +1,5 @@
-import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { colors, radius } from "@theme";
+import { TouchableOpacity, View } from "react-native";
+import { radius, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /** Simple accessible toggle switch. */
 export function Toggle({
@@ -13,6 +13,8 @@ export function Toggle({
   disabled?: boolean;
   accessibilityLabel?: string;
 }) {
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <TouchableOpacity
       accessibilityRole="switch"
@@ -27,7 +29,7 @@ export function Toggle({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   track: {
     width: 44,
     height: 26,
@@ -38,6 +40,8 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 2,
     width: 22, height: 22, borderRadius: 11,
-    backgroundColor: "#F7FAFC",
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
 });

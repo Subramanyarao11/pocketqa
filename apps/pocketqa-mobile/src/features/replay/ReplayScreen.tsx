@@ -1,13 +1,14 @@
 import React from 'react';
 import {View, Text, StyleSheet} from 'react-native';
 import {AppScreen} from '../../components/AppScreen';
-import {colors, typography} from '../../theme';
+import {useAppTheme} from '../../theme';
 
 export function ReplayScreen(): React.JSX.Element {
+  const {typography} = useAppTheme();
   return (
     <AppScreen>
       <View style={styles.container}>
-        <Text style={styles.title}>Replay</Text>
+        <Text style={typography.h2}>Replay</Text>
       </View>
     </AppScreen>
   );
@@ -15,5 +16,4 @@ export function ReplayScreen(): React.JSX.Element {
 
 const styles = StyleSheet.create({
   container: {flex: 1, justifyContent: 'center', alignItems: 'center'},
-  title: {...typography.h2, color: colors.text},
 });

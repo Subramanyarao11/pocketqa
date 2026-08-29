@@ -147,6 +147,7 @@ export const TestDraft = z.object({
   name: z.string().min(1),
   intent: z.string().min(10),
   packageName: z.string(),
+  fixture: z.string().optional(),
   compiledBy: CompilerEngine,
   createdAt: z.number(),
   steps: z.array(TestStep).min(1),

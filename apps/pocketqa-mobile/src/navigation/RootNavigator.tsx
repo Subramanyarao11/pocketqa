@@ -1,4 +1,4 @@
-import { DarkTheme, NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, DefaultTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "./types";
 import { StartupGateScreen } from "@features/onboarding/StartupGateScreen";
@@ -22,11 +22,14 @@ import { EvidenceDetailScreen } from "@features/evidence/EvidenceDetailScreen";
 import { ProviderSettingsScreen } from "@features/settings/ProviderSettingsScreen";
 import { DataAndPrivacyScreen } from "@features/settings/DataAndPrivacyScreen";
 import { AboutAndLimitsScreen } from "@features/settings/AboutAndLimitsScreen";
-import { colors } from "@theme";
+import { useAppTheme } from "@theme";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
+  const { colors, isDark } = useAppTheme();
+  const baseTheme = isDark ? DarkTheme : DefaultTheme;
+
   return (
     <NavigationContainer
       // Spread DarkTheme rather than building the object by hand: React
@@ -34,10 +37,10 @@ export function RootNavigator() {
       // reads fonts.regular. A hand-built theme without it crashes the first
       // screen with "Cannot read property 'regular' of undefined".
       theme={{
-        ...DarkTheme,
-        dark: true,
+        ...baseTheme,
+        dark: isDark,
         colors: {
-          ...DarkTheme.colors,
+          ...baseTheme.colors,
           primary: colors.lime,
           background: colors.background,
           card: colors.surface,
@@ -47,7 +50,13 @@ export function RootNavigator() {
         },
       }}
     >
-      <Stack.Navigator screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.background } }}>
+      <Stack.Navigator
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: colors.background },
+          animation: "slide_from_right",
+        }}
+      >
         <Stack.Screen name="StartupGate" component={StartupGateScreen} />
         <Stack.Screen name="Welcome" component={WelcomeScreen} />
         <Stack.Screen name="Disclosure" component={DisclosureScreen} />

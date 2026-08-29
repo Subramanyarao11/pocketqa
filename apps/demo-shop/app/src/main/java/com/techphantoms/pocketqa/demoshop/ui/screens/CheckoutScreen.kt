@@ -12,12 +12,17 @@ import com.techphantoms.pocketqa.demoshop.data.Fixtures
 @Composable
 fun CheckoutScreen(
     total: Double,
+    couponApplied: Boolean,
     onConfirm: () -> Unit,
     onBack: () -> Unit
 ) {
     var isProcessing by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isSuccess by remember { mutableStateOf(false) }
+    // Preserve the checkout-time fact even when the parent clears the cart and
+    // discount after success. The final state must still prove the regression
+    // intent that SAVE20 survived failure and retry.
+    val couponAppliedAtCheckout = remember { couponApplied }
 
     Column(
         modifier = Modifier
@@ -33,6 +38,12 @@ fun CheckoutScreen(
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.testTag("success_message")
             )
+            if (couponAppliedAtCheckout) {
+                Text(
+                    text = "${Fixtures.validCoupon.code} applied",
+                    modifier = Modifier.testTag("coupon_persisted_success")
+                )
+            }
             Spacer(modifier = Modifier.height(16.dp))
             Button(
                 onClick = onBack,
@@ -60,6 +71,12 @@ fun CheckoutScreen(
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.testTag("error_message")
                 )
+                if (couponAppliedAtCheckout) {
+                    Text(
+                        text = "${Fixtures.validCoupon.code} still applied",
+                        modifier = Modifier.testTag("coupon_persisted_failure")
+                    )
+                }
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
@@ -88,7 +105,7 @@ fun CheckoutScreen(
                         .fillMaxWidth()
                         .testTag("confirm_order_button")
                 ) {
-                    Text("Place Order")
+                    Text(if (errorMessage != null) "Retry" else "Place Order")
                 }
             }
 

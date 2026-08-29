@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AppState, StyleSheet, Text, View } from "react-native";
+import { AppState, Text, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
@@ -7,7 +7,7 @@ import {
 } from "@components";
 import { PocketQaNative } from "@native";
 import { useActiveOperationStore } from "@store";
-import { spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 const CANONICAL_STEPS: Array<{ action: "tap" | "typeText"; label: string; input?: string }> = [
   { action: "tap", label: "Open sneakers product" },
@@ -29,10 +29,12 @@ const HARD_STOP_DEMO: Array<{ action: "tap" | "typeText"; label: string }> = [
 /**
  * On a real device the user is in the target app while capture runs.  When they
  * return to PocketQA this screen appears and lets them Pause/Resume/Finish/Cancel.
- * The prototype exposes a step-by-step scripted trace via the mock harness so
- * the flow can be demonstrated without the target APK.
+ * Internal-lab builds also expose a step-by-step guided trace so the flow can
+ * be demonstrated when the target app is not available.
  */
 export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureStatus">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const activeProgress = useActiveOperationStore((s) =>
     s.active?.kind === "CAPTURE" ? s.active.progress : undefined
   );
@@ -96,21 +98,23 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
             <Text style={typography.bodyMuted}>Last: {activeProgress.lastActionLabel}</Text>
           )}
           {activeProgress?.partialEvidenceWarning && (
-            <Text style={[typography.bodyMuted, { color: "#F2B84B" }]}>
+            <Text style={[typography.bodyMuted, { color: colors.amber }]}>
               {activeProgress.partialEvidenceWarning}
             </Text>
           )}
         </Card>
 
         <Card tone="info">
-          <Text style={typography.eyebrow}>Canonical scenario</Text>
-          <Text style={typography.body}>Run the scripted trace through the Demo Shop (mock harness).</Text>
+          <Text style={typography.eyebrow}>Guided demo</Text>
+          <Text style={typography.body}>
+            Use the prepared Demo Shop flow below, or demonstrate the same actions directly in the target app.
+          </Text>
           {CANONICAL_STEPS.map((s, i) => (
             <View key={i} style={styles.row}>
               <StatusPill label={i < stepCount ? "✓" : String(i + 1)} tone={i < stepCount ? "lime" : "dim"} />
               <Text style={[typography.body, { flex: 1 }]}>{s.label}</Text>
               <GhostButton
-                label={i < stepCount ? "Done" : "Send"}
+                label={i < stepCount ? "Done" : "Capture"}
                 onPress={() => PocketQaNative.simulateCaptureEvent(route.params.sessionId, s)}
               />
             </View>
@@ -173,7 +177,7 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
   controlsRow: { flexDirection: "row", gap: spacing.sm },
 });

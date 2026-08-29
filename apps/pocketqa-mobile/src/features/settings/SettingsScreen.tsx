@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { Text, View } from "react-native";
+import { Info, Trash2 } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
@@ -7,9 +8,11 @@ import {
 } from "@components";
 import { PocketQaNative } from "@native";
 import { useReadinessStore } from "@store";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
+  const { colors, typography, isDark } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const readiness = useReadinessStore((s) => s.readiness);
   const refresh = useReadinessStore((s) => s.refresh);
   const [wipeOpen, setWipeOpen] = useState(false);
@@ -21,8 +24,19 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
 
   return (
     <>
-      <TopBar title="Settings" subtitle="Privacy · providers · data" onBack={() => navigation.goBack()} />
+      <TopBar title="Settings" subtitle="Capture, providers, and privacy" onBack={() => navigation.goBack()} />
       <AppScreen>
+        <Text style={typography.eyebrow}>Appearance</Text>
+        <Card>
+          <View style={styles.rowBetween}>
+            <View style={styles.flex}>
+              <Text style={typography.h2}>System theme</Text>
+              <Text style={typography.bodyMuted}>PocketQA follows your device appearance automatically.</Text>
+            </View>
+            <StatusPill label={isDark ? "Dark" : "Light"} tone="dim" />
+          </View>
+        </Card>
+
         <Text style={typography.eyebrow}>Capture</Text>
         <Card>
           <SettingRow
@@ -87,13 +101,22 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
           <Text style={typography.bodyMuted}>
             Removes sessions, tests, evidence, and consent record from this device.
           </Text>
-          <DangerButton label="Delete all data" onPress={() => setWipeOpen(true)} block />
+          <DangerButton
+            label="Delete all data"
+            icon={<Trash2 color={colors.red} size={16} />}
+            onPress={() => setWipeOpen(true)}
+            block
+          />
         </Card>
 
-        <Text style={typography.bodyMuted}>PocketQA · Build Spec v1 · Tech Phantoms · iQOO Hackathon 2026</Text>
+        <Text style={typography.bodyMuted}>PocketQA · Private mobile QA workspace · Tech Phantoms</Text>
       </AppScreen>
       <BottomActionBar>
-        <GhostButton label="About & limits" onPress={() => navigation.navigate("AboutAndLimits")} />
+        <GhostButton
+          label="About & limits"
+          icon={<Info color={colors.text} size={16} />}
+          onPress={() => navigation.navigate("AboutAndLimits")}
+        />
         <View style={{ flex: 1 }} />
       </BottomActionBar>
 
@@ -117,6 +140,8 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
 function SettingRow({
   label, hint, value, onChange, disabled,
 }: { label: string; hint: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <View style={[styles.rowBetween, { paddingVertical: spacing.sm, opacity: disabled ? 0.5 : 1 }]}>
       <View style={{ flex: 1 }}>
@@ -134,6 +159,8 @@ function ProviderRow({
   label: string; hint: string; masked?: string; configured: boolean;
   onSet: () => void; onClear: () => void;
 }) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <View style={{ paddingVertical: spacing.sm }}>
       <View style={styles.rowBetween}>
@@ -152,7 +179,8 @@ function ProviderRow({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   rowBetween: { flexDirection: "row", alignItems: "center", gap: spacing.md, justifyContent: "space-between" },
   rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
+  flex: { flex: 1 },
 });

@@ -2,12 +2,13 @@ import { StyleSheet, Text, View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import { AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar } from "@components";
 import { PocketQaNative } from "@native";
-import { spacing, typography } from "@theme";
+import { spacing, useAppTheme } from "@theme";
 
 export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureReady">) {
+  const { typography } = useAppTheme();
   return (
     <>
-      <TopBar title="Capture ready" subtitle="Eliminate surprises" onBack={() => navigation.goBack()} />
+      <TopBar title="Ready to capture" subtitle="Review scope before switching apps" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card tone="callout">
           <Text style={typography.h2}>Before we switch to the Demo Shop</Text>
@@ -40,7 +41,10 @@ export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureRe
         <PrimaryButton
           label="Start demonstration"
           onPress={async () => {
-            const { sessionId } = await PocketQaNative.startCapture({ intentId: route.params.intentId, fixture: "coupon-retry" });
+            // The selected fixture is persisted with the intent. Native resolves
+            // it here so this screen cannot silently replace the operator's
+            // choice with a Demo Shop-specific hardcoded value.
+            const { sessionId } = await PocketQaNative.startCapture({ intentId: route.params.intentId });
             navigation.replace("CaptureStatus", { sessionId });
           }}
         />

@@ -76,7 +76,11 @@ fun CartScreen(
                     ) {
                         // Confirming on the control that was pressed, not only in
                         // the totals further down the screen.
-                        Text(if (discount > 0) "Applied" else "Apply")
+                        Text(
+                            if (discount > 0) "Applied"
+                            else if (Fixtures.selectorDriftEnabled) "Use coupon"
+                            else "Apply"
+                        )
                     }
                 }
                 Spacer(modifier = Modifier.height(16.dp))

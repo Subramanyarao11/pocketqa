@@ -1,12 +1,14 @@
-import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { Text, TouchableOpacity, View } from "react-native";
 import { Square } from "lucide-react-native";
-import { colors, radius, spacing } from "@theme";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /**
  * Sticky Stop control — must remain reachable during replay/exploration
  * regardless of scroll position or dynamic type (§9.4).
  */
 export function PersistentStopButton({ onStop, label = "Stop" }: { onStop: () => void; label?: string }) {
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <TouchableOpacity
@@ -17,14 +19,14 @@ export function PersistentStopButton({ onStop, label = "Stop" }: { onStop: () =>
         hitSlop={12}
         testID="persistent-stop"
       >
-        <Square color="#080B10" size={16} />
+        <Square color={colors.onAccent} size={16} />
         <Text style={styles.label}>{label}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   wrap: {
     position: "absolute",
     right: spacing.xl,
@@ -46,5 +48,5 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 8,
   },
-  label: { color: "#080B10", fontWeight: "700", fontSize: 14, letterSpacing: 0.4 },
+  label: { color: colors.onAccent, fontWeight: "700", fontSize: 14, letterSpacing: 0.2 },
 });

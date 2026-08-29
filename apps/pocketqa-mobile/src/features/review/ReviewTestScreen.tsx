@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { CheckCircle2, Save, Trash2 } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, DangerButton, GhostButton, InlineNotice,
@@ -7,12 +8,14 @@ import {
 } from "@components";
 import { useDraftEditorStore } from "@store";
 import { nextId, type Assertion, type AssertionKind } from "@domain";
-import { colors, radius, spacing, typography } from "@theme";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { PocketQaNative } from "@native";
 
 const ASSERTION_KINDS: AssertionKind[] = ["textVisible", "textAbsent", "elementEnabled", "elementDisabled", "onScreen", "elementCount"];
 
 export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest">) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const draft = useDraftEditorStore((s) => s.draft);
   const load = useDraftEditorStore((s) => s.load);
   const patch = useDraftEditorStore((s) => s.patch);
@@ -96,7 +99,7 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
 
   return (
     <>
-      <TopBar title="Review draft" subtitle="Review before action" onBack={() => navigation.goBack()} />
+      <TopBar title="Review draft" subtitle="Inspect every step before approval" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card>
           <TextInput
@@ -167,7 +170,7 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
                 accessibilityState={{ selected: newKind === k }}
                 style={[styles.kindChip, newKind === k && styles.kindChipActive]}
               >
-                <Text style={{ color: newKind === k ? "#0A0F14" : colors.text, fontSize: 12 }}>{k}</Text>
+                <Text style={{ color: newKind === k ? colors.onAccent : colors.text, fontSize: 12 }}>{k}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -191,15 +194,17 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
       <BottomActionBar>
         <DangerButton
           label="Discard"
+          icon={<Trash2 color={colors.red} size={16} />}
           onPress={() => {
             PocketQaNative.deleteSession(draft.id).catch(() => {});
             navigation.replace("Home");
           }}
         />
-        <GhostButton label="Save" onPress={() => useDraftEditorStore.getState().save()} />
+        <GhostButton label="Save" icon={<Save color={colors.text} size={16} />} onPress={() => useDraftEditorStore.getState().save()} />
         <View style={{ flex: 1 }} />
         <PrimaryButton
           label="Approve"
+          icon={<CheckCircle2 color={colors.onAccent} size={17} />}
           onPress={async () => {
             try {
               await approve();
@@ -214,7 +219,7 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   title: {
     color: colors.text,
     fontSize: 20,
@@ -222,6 +227,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.input,
     padding: spacing.sm,
     borderWidth: 1, borderColor: colors.border,
+    backgroundColor: colors.surfaceRaised,
   },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
   assertion: {
@@ -232,12 +238,16 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1, borderColor: colors.borderStrong,
     borderRadius: radius.input,
-    padding: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     marginVertical: spacing.sm,
+    backgroundColor: colors.surface,
   },
   kindRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   kindChip: {
-    paddingHorizontal: spacing.sm, paddingVertical: 6,
+    minHeight: 36,
+    paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1, borderColor: colors.border,

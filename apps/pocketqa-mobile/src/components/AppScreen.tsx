@@ -1,35 +1,56 @@
 import { PropsWithChildren } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { colors, spacing } from "@theme";
+import { KeyboardAvoidingView, Platform, ScrollView, StatusBar, View } from "react-native";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
+import { spacing, useThemeStyles, type AppTheme } from "@theme";
 
 /** Standard screen frame — safe area, background, keyboard, optional scroll. */
 export function AppScreen({
   children,
   scroll = true,
   padded = true,
-}: PropsWithChildren<{ scroll?: boolean; padded?: boolean }>) {
+  safeTop = false,
+}: PropsWithChildren<{ scroll?: boolean; padded?: boolean; safeTop?: boolean }>) {
+  const styles = useThemeStyles(createStyles);
+  const insets = useSafeAreaInsets();
+  const topInset = safeTop
+    ? Math.max(
+        insets.top,
+        Platform.OS === "android" ? StatusBar.currentHeight ?? 0 : 0,
+      )
+    : 0;
   const inner = padded ? styles.padded : undefined;
   return (
-    <SafeAreaView style={styles.root} edges={["top", "left", "right"]}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
-        {scroll ? (
-          <ScrollView contentContainerStyle={inner} keyboardShouldPersistTaps="handled">
-            {children}
-          </ScrollView>
-        ) : (
-          <View style={[styles.flex, inner]}>{children}</View>
-        )}
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+    <View style={[styles.root, topInset > 0 && { paddingTop: topInset }]}>
+      <SafeAreaView style={styles.flex} edges={["left", "right"]}>
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+        >
+          {scroll ? (
+            <ScrollView
+              contentContainerStyle={inner}
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentInsetAdjustmentBehavior="never"
+            >
+              {children}
+            </ScrollView>
+          ) : (
+            <View style={[styles.flex, inner]}>{children}</View>
+          )}
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   root: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
-  padded: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xxl, gap: spacing.md },
+  padded: {
+    paddingHorizontal: 20,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.xxxl,
+    gap: spacing.md,
+  },
 });

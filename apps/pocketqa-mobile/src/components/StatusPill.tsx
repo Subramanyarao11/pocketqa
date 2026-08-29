@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View } from "react-native";
-import { colors, radius, spacing, toneColor, type StatusTone } from "@theme";
+import { Text, View } from "react-native";
+import { radius, spacing, toneForeground, toneSurface, useAppTheme, useThemeStyles, type AppTheme, type StatusTone } from "@theme";
 
 export interface StatusPillProps {
   label: string;
@@ -9,11 +9,13 @@ export interface StatusPillProps {
 
 /** Semantic pill: text + optional icon + colour that maps to a documented tone. */
 export function StatusPill({ label, tone = "dim", icon }: StatusPillProps) {
-  const fg = toneColor[tone];
-  const bg = tone === "dim" ? "transparent" : `${fg}20`;
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
+  const fg = toneForeground(colors, tone);
+  const bg = toneSurface(colors, tone);
   return (
     <View
-      style={[styles.root, { backgroundColor: bg, borderColor: tone === "dim" ? colors.border : "transparent" }]}
+      style={[styles.root, { backgroundColor: bg, borderColor: colors.border }]}
       accessible
       accessibilityRole="text"
       accessibilityLabel={label}
@@ -24,16 +26,16 @@ export function StatusPill({ label, tone = "dim", icon }: StatusPillProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   root: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: radius.pill,
     borderWidth: 1,
     alignSelf: "flex-start",
   },
-  text: { fontSize: 11, fontWeight: "700", letterSpacing: 0.4 },
+  text: { fontSize: 11, lineHeight: 15, fontWeight: "700", letterSpacing: 0.25 },
 });

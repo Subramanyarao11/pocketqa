@@ -4,10 +4,12 @@ import type { ScreenProps } from "@navigation";
 import { AppScreen, Card, InlineNotice, StatusPill, TopBar } from "@components";
 import { PocketQaNative } from "@native";
 import type { UIState } from "@domain";
-import { colors, spacing, typography } from "@theme";
+import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /** §7.11 — inspect the redacted UI tree, OCR, and bounds for a state referenced by evidence. */
 export function EvidenceDetailScreen({ navigation, route }: ScreenProps<"EvidenceDetail">) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const { stateId } = route.params;
   const [state, setState] = useState<UIState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -101,7 +103,7 @@ export function EvidenceDetailScreen({ navigation, route }: ScreenProps<"Evidenc
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.xs },
   ocrLine: { paddingVertical: 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
 });

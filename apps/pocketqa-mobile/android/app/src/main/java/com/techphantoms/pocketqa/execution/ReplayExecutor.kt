@@ -7,6 +7,7 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.OperationLock
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
+import com.techphantoms.pocketqa.policy.FixtureLauncher
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.JsonBridge
 import com.techphantoms.pocketqa.storage.PocketQaRepository
@@ -46,6 +47,8 @@ class ReplayExecutor(
     private companion object {
         const val POLL_MS = 150L
         const val SETTLE_MS = 400L
+        /** Long enough for a keyboard dismissal or a window transition. */
+        const val OBSERVE_TIMEOUT_MS = 4_000L
     }
 
     private val scope = CoroutineScope(Dispatchers.Default)
@@ -76,6 +79,7 @@ class ReplayExecutor(
     private suspend fun runReplay(runId: String, test: JsonObject) {
         val startedAt = System.currentTimeMillis()
         val packageName = test["packageName"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        val fixture = test["fixture"]?.jsonPrimitive?.contentOrNull
         val steps = test["steps"]?.jsonArray ?: JsonArray(emptyList())
         val stepResults = mutableListOf<JsonObject>()
         val assertionResults = mutableListOf<JsonObject>()
@@ -84,7 +88,7 @@ class ReplayExecutor(
         emitProgress(runId, -1, steps.size, "Resetting fixture for $packageName…", null)
         // Real fixture reset is delegated to the target app's URI scheme in v0;
         // CLEAR_TASK gives us a clean start screen in the meantime.
-        launchTarget(packageName, reset = true)
+        launchTarget(packageName, fixture, reset = true)
         if (!awaitForeground(packageName)) {
             failure = failureObject("target-app-crash",
                 "$packageName did not come to the foreground within 8s.", null)
@@ -116,20 +120,37 @@ class ReplayExecutor(
             // say that plainly instead of reporting selector-drift against
             // whatever screen happens to be in front.
             val front = CaptureCoordinator.foregroundPackage()
-            if (front != null && front != packageName) {
+            if (front != null && front != packageName && !CaptureCoordinator.isOnScreen(packageName)) {
                 failure = failureObject("target-app-crash",
                     "$packageName left the foreground before step ${idx + 1} ($front is in front).", null)
                 stepResults += simpleStepResult(step, "fail", failure!!["summary"]!!.jsonPrimitive.content,
                     "TARGET_LOST_FOREGROUND", elapsedFrom(stepStart))
                 break
             }
-            val snapshot = CaptureCoordinator.snapshotNow(packageName, screenNameFromStep(step))
-            if (snapshot == null) {
-                failure = failureObject("permission-capture",
-                    "Accessibility service unavailable — can't observe state.", null)
-                stepResults += simpleStepResult(step, "fail", failure!!["summary"]!!.jsonPrimitive.content,
-                    "ACCESSIBILITY_DISABLED", elapsedFrom(stepStart))
-                break
+            val snapshot = when (val obs = observeWithRetry(packageName, screenNameFromStep(step))) {
+                is CaptureCoordinator.Observation.Ok -> obs.snapshot
+                is CaptureCoordinator.Observation.ServiceUnavailable -> {
+                    failure = failureObject("permission-capture",
+                        "Accessibility service still not connected after ${OBSERVE_TIMEOUT_MS}ms — " +
+                            "check it is enabled for PocketQA in Accessibility settings.", null)
+                    stepResults += simpleStepResult(step, "fail",
+                        failure!!["summary"]!!.jsonPrimitive.content,
+                        "ACCESSIBILITY_DISABLED", elapsedFrom(stepStart))
+                    break
+                }
+                is CaptureCoordinator.Observation.NoWindow -> {
+                    // Reported accurately: the service is connected and bound,
+                    // so telling the operator to enable it sends them to a
+                    // setting that is already on.
+                    failure = failureObject("target-app-crash",
+                        "No readable window for $packageName after ${OBSERVE_TIMEOUT_MS}ms — " +
+                            "the accessibility service is connected, but the app " +
+                            "presented nothing to observe.", null)
+                    stepResults += simpleStepResult(step, "fail",
+                        failure!!["summary"]!!.jsonPrimitive.content,
+                        "WINDOW_UNAVAILABLE", elapsedFrom(stepStart))
+                    break
+                }
             }
             val stateObj = JsonBridge.json.parseToJsonElement(snapshot.payload).jsonObject
             repo.persistUIState(snapshot.stateId, packageName,
@@ -172,15 +193,16 @@ class ReplayExecutor(
             // 4) Dispatch action.
             val dispatched = try {
                 when (action) {
-                    "tap"       -> observedNodeId?.let { CaptureCoordinator.performClick(it) } ?: false
-                    "longPress" -> observedNodeId?.let { CaptureCoordinator.performLongPress(it) } ?: false
+                    "tap"       -> observedNodeId?.let { CaptureCoordinator.performClick(it, packageName) } ?: false
+                    "longPress" -> observedNodeId?.let { CaptureCoordinator.performLongPress(it, packageName) } ?: false
                     "typeText"  -> observedNodeId?.let {
-                        CaptureCoordinator.performTypeText(it, step["input"]?.jsonPrimitive?.contentOrNull.orEmpty())
+                        CaptureCoordinator.performTypeText(
+                            it, step["input"]?.jsonPrimitive?.contentOrNull.orEmpty(), packageName)
                     } ?: false
-                    "clearText" -> observedNodeId?.let { CaptureCoordinator.performTypeText(it, "") } ?: false
+                    "clearText" -> observedNodeId?.let { CaptureCoordinator.performTypeText(it, "", packageName) } ?: false
                     "back"      -> CaptureCoordinator.performBack()
                     "wait"      -> { delay(step["waitMs"]?.jsonPrimitive?.content?.toLongOrNull() ?: 300L); true }
-                    "launch"    -> { launchTarget(packageName); true }
+                    "launch"    -> { launchTarget(packageName, fixture); true }
                     else        -> true
                 }
             } catch (e: Throwable) {
@@ -195,6 +217,13 @@ class ReplayExecutor(
                 stepResults += simpleStepResult(step, "fail", failure!!["summary"]!!.jsonPrimitive.content,
                     "ACTION_REFUSED", elapsedFrom(stepStart), beforeState = snapshot.stateId)
                 break
+            }
+            // Typing raises the keyboard over the lower third of the screen,
+            // where a checkout or submit button usually lives. Dismiss before
+            // observing, or the next step resolves against a tree in which its
+            // target is reported invisible.
+            if (action == "typeText" || action == "clearText") {
+                if (CaptureCoordinator.dismissKeyboardIfShowing()) delay(SETTLE_MS)
             }
             awaitSettled(packageName, screenNameFromStep(step))
 
@@ -303,17 +332,31 @@ class ReplayExecutor(
             }
         }
         val primary = strategies.firstOrNull()
-        return Resolve.Fail("TARGET_NOT_FOUND",
-            "No node matched ${primary?.get("strategy")?.jsonPrimitive?.contentOrNull} " +
-                "${primary?.get("value")?.jsonPrimitive?.contentOrNull.orEmpty()}.")
+        val label = "${primary?.get("strategy")?.jsonPrimitive?.contentOrNull} " +
+            "${primary?.get("value")?.jsonPrimitive?.contentOrNull.orEmpty()}"
+        // A control that is present but obscured or off-screen is a different
+        // fault from one that is gone, and saying "no node matched" sends the
+        // operator to repair a selector that was never wrong.
+        val hiddenMatch = strategies.any { sel ->
+            matchNodes(sel, nodes, requireVisible = false).isNotEmpty()
+        }
+        if (hiddenMatch) {
+            return Resolve.Fail("TARGET_NOT_VISIBLE",
+                "$label is present but not visible — it is covered or off-screen.")
+        }
+        return Resolve.Fail("TARGET_NOT_FOUND", "No node matched $label.")
     }
 
-    private fun matchNodes(sel: JsonObject, nodes: List<JsonObject>): List<JsonObject> {
+    private fun matchNodes(
+        sel: JsonObject,
+        nodes: List<JsonObject>,
+        requireVisible: Boolean = true,
+    ): List<JsonObject> {
         val strategy = sel["strategy"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val value = sel["value"]?.jsonPrimitive?.contentOrNull.orEmpty()
         val role = sel["role"]?.jsonPrimitive?.contentOrNull
         return nodes.filter { n ->
-            if (n["visible"]?.jsonPrimitive?.contentOrNull != "true") return@filter false
+            if (requireVisible && n["visible"]?.jsonPrimitive?.contentOrNull != "true") return@filter false
             when (strategy) {
                 "testId"             -> n["testId"]?.jsonPrimitive?.contentOrNull == value
                 "resourceId"         -> n["resourceId"]?.jsonPrimitive?.contentOrNull == value
@@ -379,10 +422,8 @@ class ReplayExecutor(
      * the demonstration itself) left behind and step 1 resolves against the
      * wrong state. A regression test has to control its own starting point.
      */
-    private fun launchTarget(packageName: String, reset: Boolean = false) {
-        val launch = ctx.packageManager.getLaunchIntentForPackage(packageName) ?: return
-        launch.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-        if (reset) launch.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK)
+    private fun launchTarget(packageName: String, fixture: String?, reset: Boolean = false) {
+        val launch = FixtureLauncher.targetIntent(ctx, packageName, fixture, reset) ?: return
         ctx.startActivity(launch)
     }
 
@@ -394,13 +435,44 @@ class ReplayExecutor(
     private suspend fun awaitForeground(packageName: String, timeoutMs: Long = 8_000): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
-            if (CaptureCoordinator.foregroundPackage() == packageName) {
+            if (CaptureCoordinator.isOnScreen(packageName)) {
                 delay(SETTLE_MS) // let the first frame lay out before observing
                 return true
             }
             delay(POLL_MS)
         }
-        return CaptureCoordinator.foregroundPackage() == packageName
+        return CaptureCoordinator.isOnScreen(packageName)
+    }
+
+    /**
+     * Observe, tolerating a window that is not readable yet.
+     *
+     * A replay observes immediately after actions that move windows — a tap that
+     * navigates, a typeText that raises the keyboard — so the first read landing
+     * mid-transition is the normal case, not an error. Only a disconnected
+     * service is worth failing on straight away; everything else is worth
+     * waiting out.
+     */
+    private suspend fun observeWithRetry(
+        packageName: String,
+        screenName: String,
+        timeoutMs: Long = OBSERVE_TIMEOUT_MS,
+    ): CaptureCoordinator.Observation {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var last: CaptureCoordinator.Observation = CaptureCoordinator.Observation.NoWindow
+        while (System.currentTimeMillis() < deadline) {
+            last = CaptureCoordinator.observe(packageName, screenName)
+            if (last is CaptureCoordinator.Observation.Ok) return last
+            // A disconnected service is retried too, and this is the correction
+            // that mattered: setting serviceInfo rebinds the service, so the
+            // reference is briefly null while the old instance is torn down and
+            // the new one connects. Treating that instant as terminal aborted a
+            // run whose service was enabled and bound the whole time — which is
+            // exactly what the failing step reported. Four seconds of "still
+            // gone" is a real fault; ten milliseconds of it is a handover.
+            delay(POLL_MS)
+        }
+        return last
     }
 
     /**

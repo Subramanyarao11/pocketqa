@@ -1,16 +1,17 @@
 import { Text } from "react-native";
 import type { ScreenProps } from "@navigation";
 import { AppScreen, Card, TopBar } from "@components";
-import { typography } from "@theme";
+import { useAppTheme } from "@theme";
 
 export function AboutAndLimitsScreen({ navigation }: ScreenProps<"AboutAndLimits">) {
+  const { typography } = useAppTheme();
   return (
     <>
       <TopBar title="About & limits" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card>
           <Text style={typography.eyebrow}>PocketQA</Text>
-          <Text style={typography.body}>Build-ready v1.0 — Tech Phantoms</Text>
+          <Text style={typography.body}>Private mobile QA workspace · Tech Phantoms</Text>
         </Card>
         <Card tone="info">
           <Text style={typography.h2}>Policy boundary</Text>

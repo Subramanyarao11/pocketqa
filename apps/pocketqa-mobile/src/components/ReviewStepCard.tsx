@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { colors, radius, spacing, typography } from "@theme";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { Card } from "./Card";
 import { StatusPill } from "./StatusPill";
 import type { AssertionKind, CompilerEngine, TestStep } from "@domain";
@@ -25,6 +26,8 @@ export function ReviewStepCard({
   step, index, compiledBy,
   onDelete, onMove, onEditInput, onEditWait, onOpenSelectors, onAddAssertion, onRemoveAssertion,
 }: ReviewStepCardProps) {
+  const { colors, typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [expanded, setExpanded] = useState(false);
   const [assertTarget, setAssertTarget] = useState("");
   const [assertKind, setAssertKind] = useState<AssertionKind>("textVisible");
@@ -34,7 +37,7 @@ export function ReviewStepCard({
   const provenance = provenanceForStep(step, compiledBy);
 
   return (
-    <Card tone={warn ? "warn" : "surface"} style={{ borderLeftWidth: warn ? 3 : 1, borderLeftColor: warn ? colors.amber : colors.border }}>
+    <Card tone={warn ? "warn" : "surface"}>
       <TouchableOpacity onPress={() => setExpanded((x) => !x)} accessibilityRole="button" accessibilityLabel={`Step ${index + 1}: ${step.label}`}>
         <View style={styles.headline}>
           <View style={{ flex: 1 }}>
@@ -55,7 +58,9 @@ export function ReviewStepCard({
               {step.needsHumanCorrection && <StatusPill label="Needs correction" tone="amber" />}
             </View>
           </View>
-          <Text style={typography.metadata}>{expanded ? "▾" : "▸"}</Text>
+          {expanded
+            ? <ChevronDown color={colors.textDim} size={18} />
+            : <ChevronRight color={colors.textDim} size={18} />}
         </View>
       </TouchableOpacity>
       {expanded && (
@@ -164,7 +169,7 @@ export function ReviewStepCard({
                     accessibilityState={{ selected: assertKind === k }}
                     style={[styles.kindChip, assertKind === k && styles.kindChipActive]}
                   >
-                    <Text style={{ color: assertKind === k ? "#0A0F14" : colors.text, fontSize: 12 }}>{k}</Text>
+                    <Text style={{ color: assertKind === k ? colors.onAccent : colors.text, fontSize: 12 }}>{k}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -187,7 +192,7 @@ export function ReviewStepCard({
                   accessibilityLabel="Add assertion"
                   style={styles.addBtn}
                 >
-                  <Text style={{ color: "#0A0F14", fontWeight: "700" }}>Add</Text>
+                  <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Add</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -225,7 +230,7 @@ function provenanceForStep(
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors }: AppTheme) => ({
   headline: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
   detail: { marginTop: spacing.md, gap: spacing.xs },
@@ -235,7 +240,7 @@ const styles = StyleSheet.create({
     fontFamily: "monospace",
     fontSize: 12,
     color: colors.cyan,
-    backgroundColor: "rgba(89,217,255,0.06)",
+    backgroundColor: colors.infoSurface,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: 6,
@@ -245,7 +250,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     borderWidth: 1, borderColor: colors.borderStrong,
     borderRadius: radius.input,
-    padding: spacing.sm,
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     marginVertical: spacing.xs,
   },
   assertionRow: {
@@ -261,20 +268,23 @@ const styles = StyleSheet.create({
   },
   kindRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
   kindChip: {
-    paddingHorizontal: spacing.sm, paddingVertical: 6,
+    minHeight: 36,
+    paddingHorizontal: spacing.md, paddingVertical: 7,
     borderRadius: radius.pill,
     backgroundColor: colors.surface,
     borderWidth: 1, borderColor: colors.border,
   },
   kindChipActive: { backgroundColor: colors.lime, borderColor: colors.lime },
   addBtn: {
-    paddingHorizontal: spacing.md, paddingVertical: 8,
-    borderRadius: radius.pill,
+    minHeight: 44,
+    paddingHorizontal: spacing.lg, paddingVertical: 8,
+    borderRadius: radius.control,
     backgroundColor: colors.lime,
+    justifyContent: "center",
   },
   controls: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" },
   controlBtn: {
-    width: 32, height: 32, borderRadius: 8,
+    width: 40, height: 40, borderRadius: 10,
     borderWidth: 1, borderColor: colors.border,
     alignItems: "center", justifyContent: "center",
   },

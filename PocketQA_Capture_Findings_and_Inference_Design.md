@@ -541,23 +541,22 @@ concession: a shop where adding to cart shows nothing is a broken shop. The
 cart button now shows its count and both buttons confirm their state. That is
 also precisely what a regression test needs to assert on.
 
-### 5.5 The touch API is the right primitive and this device will not deliver it
+### 5.5 Accessibility motion events are not a passive touch primitive
 
-From Android 14 an accessibility service can observe touchscreen motion events
-(`onMotionEvent` + `FLAG_SEND_MOTION_EVENTS` + `setMotionEventSources`) without
-enabling touch exploration — input is not intercepted, the target app receives
-every gesture unchanged. Hit-testing the tap against the tree makes attribution
-a lookup rather than an inference.
+Android 14 added `AccessibilityService.onMotionEvent`, but the platform contract
+is explicit: motion events from sources registered with `setMotionEventSources`
+are **not sent to the rest of the system**. Registering `SOURCE_TOUCHSCREEN`
+therefore makes the accessibility input filter own the operator's physical touch
+stream. On the iQOO I2501 running Android 16 this presented as a fully rendered
+app that ignored every finger tap, while ADB-injected taps still worked.
 
-It is implemented, guarded by API level, and scored ahead of the scroll guard —
-but only for a gesture confirmed to be a tap (displacement within the platform
-touch slop, under 600ms), because a fling also starts with a finger going down
-and would otherwise blame a screen of churn on wherever it started.
-
-On the vivo test device it never fires: `dumpsys accessibility` reports
-`A11yInputFilter … Enabled features of Display [0] = []`, so no motion events
-reach any service. The diff signals remain load-bearing. Treat the touch route
-as an accelerator on devices that grant it, never as the plan.
+The service now clears the motion-event source mask and
+`FLAG_SEND_MOTION_EVENTS` whenever it connects. Physical input remains with the
+target app; capture relies on direct accessibility events where Compose exposes
+them and the state-diff attribution described above for ordinary Compose taps.
+The optional touch-coordinate input remains only as an extension point for a
+future instrumentation or OEM backend that can provide it without intercepting
+the user's input.
 
 ### 5.6 Attribution confidence measured on the real flow
 

@@ -5,13 +5,26 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { RootNavigator } from "@navigation";
 import { PocketQaNative } from "@native";
 import { useActiveOperationStore, useReadinessStore } from "@store";
-import { colors } from "@theme";
+import { AppThemeProvider, useAppTheme } from "@theme";
 
 export default function App() {
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <AppThemeProvider>
+          <AppRoot />
+        </AppThemeProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+function AppRoot() {
   const applyEvent = useActiveOperationStore((s) => s.applyEvent);
   const hydrate = useActiveOperationStore((s) => s.hydrate);
   const refreshReadiness = useReadinessStore((s) => s.refresh);
   const lastState = useRef<AppStateStatus>(AppState.currentState);
+  const { colors, isDark } = useAppTheme();
 
   useEffect(() => {
     hydrate().catch(() => {});
@@ -40,11 +53,12 @@ export default function App() {
   }, [hydrate, refreshReadiness]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.background }}>
-      <SafeAreaProvider>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <RootNavigator />
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <>
+      <StatusBar
+        barStyle={isDark ? "light-content" : "dark-content"}
+        backgroundColor={colors.background}
+      />
+      <RootNavigator />
+    </>
   );
 }

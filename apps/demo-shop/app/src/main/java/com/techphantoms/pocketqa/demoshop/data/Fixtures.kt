@@ -31,9 +31,22 @@ object Fixtures {
 
     var shouldSimulateCheckoutError = false
     var shouldSimulateRetry = false
+    var selectorDriftEnabled = false
 
     fun reset() {
         shouldSimulateCheckoutError = false
         shouldSimulateRetry = false
+        selectorDriftEnabled = false
+    }
+
+    fun configure(id: String?) {
+        reset()
+        when (id) {
+            "coupon-retry" -> {
+                shouldSimulateCheckoutError = true
+                shouldSimulateRetry = true
+            }
+            "selector-drift" -> selectorDriftEnabled = true
+        }
     }
 }

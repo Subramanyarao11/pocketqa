@@ -1,5 +1,5 @@
-import { Modal, StyleSheet, Text, View } from "react-native";
-import { colors, radius, spacing, typography } from "@theme";
+import { Modal, Text, View } from "react-native";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { DangerButton, GhostButton, PrimaryButton } from "./Button";
 
 export interface ConfirmSheetProps {
@@ -24,6 +24,8 @@ export function ConfirmSheet({
   onConfirm,
   onCancel,
 }: ConfirmSheetProps) {
+  const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <Modal transparent visible={visible} animationType="fade" onRequestClose={onCancel}>
       <View style={styles.scrim}>
@@ -42,7 +44,7 @@ export function ConfirmSheet({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = ({ colors, isDark }: AppTheme) => ({
   scrim: {
     flex: 1,
     backgroundColor: colors.scrim,
@@ -50,12 +52,18 @@ const styles = StyleSheet.create({
   },
   sheet: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.card,
-    borderTopRightRadius: radius.card,
+    borderTopLeftRadius: radius.panel,
+    borderTopRightRadius: radius.panel,
     padding: spacing.xl,
-    gap: spacing.md,
+    paddingBottom: spacing.xxl,
+    gap: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: isDark ? 0.25 : 0.12,
+    shadowRadius: 20,
+    elevation: 12,
   },
   actions: {
     flexDirection: "row",

@@ -1,5 +1,5 @@
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { colors, radius, spacing, typography } from "@theme";
+import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
+import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme, type ThemeColors } from "@theme";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -26,8 +26,10 @@ function Button({
   accessibilityLabel,
   testID,
 }: ButtonProps) {
+  const { colors } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const isDisabled = !!(disabled || loading);
-  const palette = paletteFor(variant, isDisabled);
+  const palette = paletteFor(colors, variant);
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -36,6 +38,7 @@ function Button({
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityState={{ disabled: !!isDisabled, busy: !!loading }}
       hitSlop={8}
+      activeOpacity={0.72}
       style={[
         styles.base,
         { backgroundColor: palette.bg, borderColor: palette.border, opacity: isDisabled ? 0.5 : 1 },
@@ -55,27 +58,27 @@ function Button({
   );
 }
 
-function paletteFor(v: ButtonVariant, _disabled: boolean) {
+function paletteFor(colors: ThemeColors, v: ButtonVariant) {
   switch (v) {
-    case "primary": return { bg: colors.lime, fg: "#081014", border: colors.lime };
+    case "primary": return { bg: colors.lime, fg: colors.onAccent, border: colors.lime };
     case "secondary": return { bg: colors.surfaceRaised, fg: colors.text, border: colors.borderStrong };
     case "ghost": return { bg: "transparent", fg: colors.text, border: colors.border };
-    case "danger": return { bg: "transparent", fg: colors.red, border: colors.red };
+    case "danger": return { bg: colors.dangerSurface, fg: colors.red, border: colors.red };
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = (_theme: AppTheme) => ({
   base: {
     minHeight: 48,
-    borderRadius: radius.input,
+    borderRadius: radius.control,
     borderWidth: 1,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: 18,
     justifyContent: "center",
     alignItems: "center",
   },
   block: { alignSelf: "stretch" },
   row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  label: { ...typography.body, fontWeight: "600" },
+  label: { fontSize: 14, lineHeight: 20, fontWeight: "700", letterSpacing: 0.1 },
 });
 
 export const PrimaryButton = (p: Omit<ButtonProps, "variant">) => <Button {...p} variant="primary" />;
