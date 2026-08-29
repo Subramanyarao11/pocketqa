@@ -1,10 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Fixtures this app supports, read by PocketQA at target-selection time.
+      Declaring them here is how an app opts in: PocketQA has no way to guess
+      what states a third-party app can reset to, so anything that does not
+      declare them simply gets no fixture picker.
+    -->
     <application
         android:allowBackup="true"
         android:label="Demo Shop"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <meta-data
+            android:name="pocketqa.fixtures"
+            android:value="reset,coupon-retry,selector-drift" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

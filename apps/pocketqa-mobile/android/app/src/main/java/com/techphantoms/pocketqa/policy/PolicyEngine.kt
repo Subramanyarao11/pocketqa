@@ -12,7 +12,28 @@ import com.facebook.react.bridge.WritableMap
  * hard stops (see PRD §12 and Build Spec §11.3 error envelope).
  */
 class PolicyEngine {
-    private val allowlistedPackages = listOf("com.techphantoms.pocketqa.demoshop")
+
+    /**
+     * Packages that are never a legitimate capture target, whatever the user
+     * picks. PocketQA itself would capture its own review screens; the launcher,
+     * system UI and the settings app are where the guarded actions live and are
+     * outside any app-scoped session by definition.
+     */
+    private val neverTargetable = listOf(
+        "com.techphantoms.pocketqa",
+        "com.android.systemui",
+        "com.android.settings",
+        "android",
+    )
+
+    /** Manifest key a target uses to declare the fixtures it supports. */
+    private val FIXTURES_META_DATA = "pocketqa.fixtures"
+
+    private val neverTargetablePrefixes = listOf(
+        "com.google.android.packageinstaller",
+        "com.android.packageinstaller",
+        "com.android.permissioncontroller",
+    )
 
     private val blockedKeywords = listOf(
         "pay", "checkout complete", "confirm order", "place order",
@@ -30,21 +51,86 @@ class PolicyEngine {
         Regex("biometric", RegexOption.IGNORE_CASE),
     )
 
-    fun allowlist(): WritableArray {
+    /**
+     * Every app the operator may target, read from the device.
+     *
+     * This used to be `listOf("…demoshop")` with the display name and fixtures
+     * hardcoded, which meant PocketQA could only ever record its own sample app.
+     * The allowlist is now the set of launchable installed apps minus the ones
+     * that are never a valid target — and the operator's per-session choice is
+     * what actually scopes capture. Selecting the target *is* the consent.
+     *
+     * Fixtures are only meaningful for an app that exposes a reset hook, so they
+     * are reported per app rather than assumed.
+     */
+    fun allowlist(context: android.content.Context): WritableArray {
+        val pm = context.packageManager
+        val launcherIntent = android.content.Intent(android.content.Intent.ACTION_MAIN)
+            .addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+        val resolved = pm.queryIntentActivities(launcherIntent, 0)
+
+        val seen = mutableSetOf<String>()
+        val apps = mutableListOf<Pair<String, String>>()
+        for (info in resolved) {
+            val pkg = info.activityInfo?.packageName ?: continue
+            if (!isTargetable(pkg) || !seen.add(pkg)) continue
+            val label = runCatching { info.loadLabel(pm).toString() }.getOrNull() ?: pkg
+            apps += pkg to label
+        }
+        apps.sortBy { it.second.lowercase() }
+
         val arr = Arguments.createArray()
-        for (pkg in allowlistedPackages) {
+        for ((pkg, label) in apps) {
             val map: WritableMap = Arguments.createMap()
             map.putString("packageName", pkg)
-            map.putString("displayName", "PocketQA Demo Shop")
-            val fixtures = Arguments.createArray()
-            fixtures.pushString("reset")
-            fixtures.pushString("coupon-retry")
-            fixtures.pushString("selector-drift")
-            map.putArray("fixtureIds", fixtures)
+            map.putString("displayName", label)
+            map.putArray("fixtureIds", fixturesFor(pkg, context))
             arr.pushMap(map)
         }
         return arr
     }
+
+    /**
+     * Fixture ids a target app declares for itself.
+     *
+     * Two earlier versions of this were wrong in the same way. The first
+     * hardcoded Demo Shop's three ids for every app. The second probed for a
+     * `<scheme>://reset` deep link but *still* returned those same three ids on a
+     * hit — so any app with a reset hook would have been offered "coupon-retry",
+     * which means nothing to it.
+     *
+     * Fixtures are app-specific by definition, so the app is the only thing that
+     * can name them. A target opts in by declaring them in its manifest:
+     *
+     *     <meta-data android:name="pocketqa.fixtures"
+     *                android:value="reset,coupon-retry,selector-drift" />
+     *
+     * Anything that does not declare them gets an empty list and PocketQA hides
+     * the fixture picker entirely — which is the honest answer for the Calculator
+     * as much as for a third-party app.
+     */
+    private fun fixturesFor(packageName: String, context: android.content.Context): WritableArray {
+        val arr = Arguments.createArray()
+        val declared = runCatching {
+            context.packageManager
+                .getApplicationInfo(
+                    packageName,
+                    android.content.pm.PackageManager.GET_META_DATA,
+                )
+                .metaData
+                ?.getString(FIXTURES_META_DATA)
+        }.getOrNull() ?: return arr
+
+        for (id in declared.split(',')) {
+            val trimmed = id.trim()
+            if (trimmed.isNotEmpty()) arr.pushString(trimmed)
+        }
+        return arr
+    }
+
+    private fun isTargetable(packageName: String): Boolean =
+        packageName !in neverTargetable &&
+            neverTargetablePrefixes.none { packageName.startsWith(it) }
 
     /** True when the label/description hits a blocked-category keyword. */
     fun isBlockedCategory(text: String?): Boolean {
@@ -58,7 +144,16 @@ class PolicyEngine {
         return sensitivePatterns.any { it.containsMatchIn(t) }
     }
 
-    fun inAllowlist(packageName: String?): Boolean = packageName in allowlistedPackages
+    /**
+     * Whether a package may be captured at all.
+     *
+     * The real scoping is per session: the accessibility service already drops
+     * every event whose package is not the session's selected target. This is the
+     * standing rule underneath that — the handful of packages that are never a
+     * valid target no matter what the operator selects.
+     */
+    fun inAllowlist(packageName: String?): Boolean =
+        packageName != null && isTargetable(packageName)
 
     /** Structured decision — mirrors PolicyDecision in src/domain/policy.ts. */
     sealed class Decision {

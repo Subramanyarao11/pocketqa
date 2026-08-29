@@ -40,7 +40,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     private val dao get() = db.dao()
     private val prefs = ctx.getSharedPreferences("pocketqa.settings", 0)
     private val vault = CredentialVault(ctx)
-    private val allowlist = listOf("com.techphantoms.pocketqa.demoshop")
+    private val policy = com.techphantoms.pocketqa.policy.PolicyEngine()
 
     data class Session(val id: String, val packageName: String)
 
@@ -72,6 +72,8 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         map.putBoolean("screenshotSupported", true)
         map.putBoolean("storageOk", ctx.filesDir.freeSpace > 20 * 1024 * 1024)
         map.putBoolean("microphoneReady", false)
+        // Kept for the readiness card, but it is no longer a gate: any installed
+        // app is a valid target now, so a missing Demo Shop does not block a run.
         map.putBoolean("demoShopInstalled", demoShopInstalled())
         map.putString("onDeviceModel", "unavailable")
         map.putBoolean("offlineMode", prefs.getBoolean("offlineMode", true))
@@ -85,7 +87,14 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             connected.putMap(p, entry)
         }
         map.putMap("connected", connected)
-        val al = Arguments.createArray(); for (pkg in allowlist) al.pushString(pkg)
+        // Read from the device rather than a build-time constant, so readiness
+        // reports what the operator can actually target.
+        val apps = policy.allowlist(ctx)
+        val al = Arguments.createArray()
+        for (i in 0 until apps.size()) {
+            apps.getMap(i)?.getString("packageName")?.let { al.pushString(it) }
+        }
+        map.putInt("targetableAppCount", apps.size())
         map.putArray("packageAllowlist", al)
         map
     }

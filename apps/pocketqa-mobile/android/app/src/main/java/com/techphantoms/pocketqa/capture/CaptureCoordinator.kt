@@ -310,7 +310,7 @@ class CaptureCoordinator(
                 alternatives = pending.alternatives,
             )
         }
-        if (!launchDemoShop(session.packageName)) {
+        if (!launchTargetApp(session.packageName)) {
             // Unwind: a session that never reaches the target app records
             // nothing, and leaving it "Recording" holds the operation lock.
             activePackage.set(null)
@@ -446,7 +446,8 @@ class CaptureCoordinator(
     }
 
     /**
-     * Bring the target app to the front so the demonstration can begin.
+     * Bring the operator's chosen target app to the front so the demonstration
+     * can begin. Any installed app, not just the sample one.
      *
      * Two things made the old version fail intermittently, and silently:
      *
@@ -463,7 +464,7 @@ class CaptureCoordinator(
      * Returns false when the target could not be brought forward, so the caller
      * can fail the session instead of recording nothing.
      */
-    private fun launchDemoShop(pkg: String): Boolean {
+    private fun launchTargetApp(pkg: String): Boolean {
         val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)
         if (launch == null) {
             android.util.Log.w("PocketQaCapture", "no launch intent for $pkg")

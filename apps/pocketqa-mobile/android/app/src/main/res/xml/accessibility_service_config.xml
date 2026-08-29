@@ -2,8 +2,20 @@
 <!--
   PocketQA capture-service configuration.
 
-  Scope is intentionally minimal:
-   * only the allowlisted target package (Demo Shop) is inspected;
+  Scope is enforced at runtime rather than declared here.
+
+  `android:packageNames` used to pin this service to the Demo Shop, which meant
+  PocketQA could only ever record its own sample app — the OS dropped every event
+  from anywhere else before the service saw it. Removing it lets the operator
+  target any installed app.
+
+  Nothing is loosened by that. The service already drops every event whose
+  package is not the *current session's* selected target, and again if the
+  package is one that is never targetable (PocketQA itself, system UI, settings,
+  the permission controller). Capture only ever runs inside a session the
+  operator explicitly started against an app they explicitly chose, so the scope
+  is now per session instead of per build.
+
    * events other than window-content changes are filtered client-side;
    * screenshot is requested per-window only from the service, never
      via MediaProjection or arbitrary display capture.
@@ -11,7 +23,6 @@
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewClicked|typeViewFocused|typeViewTextChanged"
-    android:packageNames="com.techphantoms.pocketqa.demoshop"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:notificationTimeout="80"
     android:canRetrieveWindowContent="true"

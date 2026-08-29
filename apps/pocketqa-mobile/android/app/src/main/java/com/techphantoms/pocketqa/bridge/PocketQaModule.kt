@@ -30,7 +30,7 @@ import java.util.UUID
  * enforces the wire-safe error envelope declared in §11.3.
  */
 @ReactModule(name = PocketQaModule.NAME)
-class PocketQaModule(reactContext: ReactApplicationContext) :
+class PocketQaModule(private val reactContext: ReactApplicationContext) :
     NativePocketQaModuleSpec(reactContext) {
 
     companion object { const val NAME: String = "PocketQaModule" }
@@ -94,7 +94,7 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
     override fun openAccessibilitySettings(promise: Promise) = guard(promise) {
         capture.openAccessibilitySettings(); promise.resolve(null)
     }
-    override fun listAllowlistedApps(promise: Promise) = guard(promise) { promise.resolve(policy.allowlist()) }
+    override fun listAllowlistedApps(promise: Promise) = guard(promise) { promise.resolve(policy.allowlist(reactContext)) }
     override fun setOfflineMode(offline: Boolean, promise: Promise) = guard(promise) {
         repo.setOfflineMode(offline); promise.resolve(null)
     }

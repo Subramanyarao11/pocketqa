@@ -82,6 +82,14 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
     return null;
   };
 
+  const FIXTURE_LABELS: Record<string, string> = {
+    reset: "Reset (empty state)",
+    "coupon-retry": "Coupon retry (canonical)",
+    "selector-drift": "Selector-drift build",
+  };
+  const fixturesForSelectedApp = (apps.find((a) => a.packageName === pkg)?.fixtureIds ?? [])
+    .map((id) => ({ id, label: FIXTURE_LABELS[id] ?? id }));
+
   const invalid = intent.trim().length < 10 || intent.length > 500 || !pkg || !ack;
 
   return (
@@ -196,13 +204,15 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
           </TouchableOpacity>
         ))}
 
+        {/* Fixtures come from the selected app, not from a constant. The list was
+            hardcoded to Demo Shop's three, so picking Calculator offered it
+            "Reset (empty cart)" and "Coupon retry" — fixtures that do not exist
+            for it. An app only has fixtures if it exposes a reset hook. */}
+        {fixturesForSelectedApp.length > 0 && (
+          <>
         <Text style={[typography.eyebrow, { marginTop: spacing.md }]}>Fixture</Text>
         <Card>
-          {[
-            { id: "reset", label: "Reset (empty cart)" },
-            { id: "coupon-retry", label: "Coupon retry (canonical)" },
-            { id: "selector-drift", label: "Selector-drift build" },
-          ].map((f) => (
+          {fixturesForSelectedApp.map((f) => (
             <TouchableOpacity
               key={f.id}
               onPress={() => setFixture(f.id)}
@@ -217,6 +227,8 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             </TouchableOpacity>
           ))}
         </Card>
+          </>
+        )}
 
         <TouchableOpacity
           style={styles.consentRow}
