@@ -203,6 +203,13 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     fun resumeSession(id: String) = runBlocking {
         dao.updateSessionState(id, "recording", System.currentTimeMillis())
     }
+    /**
+     * Mark a session terminal. Without this the row stays `recording` forever,
+     * and anything that rehydrates from Room brings the finished session back.
+     */
+    fun finishSession(id: String) = runBlocking {
+        dao.updateSessionState(id, "finished", System.currentTimeMillis())
+    }
     fun cancelSession(id: String, deleteArtifacts: Boolean) = runBlocking {
         if (deleteArtifacts) dao.deleteEventsForSession(id)
         dao.deleteSession(id)
@@ -522,7 +529,20 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             com.techphantoms.pocketqa.OperationLock.Kind.valueOf(room.kind)
         }.getOrNull() ?: return
         if (held == null) {
-            com.techphantoms.pocketqa.OperationLock.acquire(kind, room.operationId)
+            // Nothing holds the lock in this process, so the row was written by
+            // a process that is gone. None of these operations can survive that:
+            // a capture session lives in the accessibility service's memory, and
+            // a replay job lives in a coroutine scope. Re-acquiring the lock
+            // resurrected an operation that could never receive another event —
+            // the app showed "Recording" with a session that was already dead,
+            // and Finish had nothing to finish. Close it out instead.
+            if (kind == com.techphantoms.pocketqa.OperationLock.Kind.CAPTURE) {
+                dao.session(room.operationId)?.let {
+                    dao.updateSessionState(room.operationId, "abandoned", System.currentTimeMillis())
+                }
+            }
+            dao.clearActiveOp()
+            return
         } else if (held.kind != kind || held.id != room.operationId) {
             com.techphantoms.pocketqa.OperationLock.clear()
             com.techphantoms.pocketqa.OperationLock.acquire(kind, room.operationId)
@@ -665,8 +685,15 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
 
     /** Fluent step label — mirrors describeAction() in src/domain/compiler.ts. */
     private fun deriveLabel(ev: JsonObject, target: JsonObject?): String {
+        // `name` is the label a control inherits from its subtree: a Compose
+        // Button has no text of its own, so without it every button-driven step
+        // reads "Tap element" even though we know it is called "Cart".
+        // The id is a last resort, humanised — "Tap cart button" still tells a
+        // reviewer more than "Tap element".
         val text = target?.get("text")?.jsonPrimitive?.contentOrNull
             ?: target?.get("contentDescription")?.jsonPrimitive?.contentOrNull
+            ?: target?.get("name")?.jsonPrimitive?.contentOrNull
+            ?: target?.get("testId")?.jsonPrimitive?.contentOrNull?.let(::humanise)
         val input = ev["input"]?.jsonPrimitive?.contentOrNull
         return when (ev["action"]?.jsonPrimitive?.contentOrNull) {
             "tap"       -> if (text != null) "Tap \"$text\"" else "Tap element"
@@ -680,6 +707,14 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             else        -> "Unrecognised action — please review"
         }
     }
+
+    /** "apply_coupon_button" -> "apply coupon button". */
+    private fun humanise(id: String): String =
+        id.replace(Regex("[_\\-.]+"), " ")
+            .replace(Regex("(?<=[a-z])(?=[A-Z])"), " ")
+            .trim()
+            .lowercase()
+            .takeIf { it.isNotBlank() } ?: id
 
     /** Deterministic selector ranker — mirrors src/domain/selectors.ts. */
     /**

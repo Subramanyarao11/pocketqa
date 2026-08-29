@@ -428,6 +428,7 @@ class CaptureCoordinator(
 
     fun finish(sessionId: String, compiler: CompileCoordinator, promise: Promise) {
         val jobId = compiler.compile(sessionId)
+        repo.finishSession(sessionId)
         activePackage.set(null)
         activeSession.set(null)
         stateSink = null
