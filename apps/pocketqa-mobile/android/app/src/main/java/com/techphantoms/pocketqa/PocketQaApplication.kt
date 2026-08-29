@@ -9,6 +9,7 @@ import com.facebook.react.ReactPackage
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.load
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.facebook.react.defaults.DefaultReactNativeHost
+import com.facebook.react.soloader.OpenSourceMergedSoMapping
 import com.facebook.soloader.SoLoader
 import com.techphantoms.pocketqa.bridge.PocketQaPackage
 
@@ -34,7 +35,11 @@ class PocketQaApplication : Application(), ReactApplication {
 
     override fun onCreate() {
         super.onCreate()
-        SoLoader.init(this, false)
+        // React Native 0.76+ merges the individual JNI libraries into
+        // libreactnative.so. Without the merged mapping, SoLoader still looks
+        // for the old split libs and dies at startup on the first one:
+        // UnsatisfiedLinkError: library "libreact_featureflagsjni.so" not found.
+        SoLoader.init(this, OpenSourceMergedSoMapping)
         if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) load()
     }
 }

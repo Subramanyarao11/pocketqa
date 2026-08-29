@@ -1,4 +1,4 @@
-import { NavigationContainer } from "@react-navigation/native";
+import { DarkTheme, NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "./types";
 import { StartupGateScreen } from "@features/onboarding/StartupGateScreen";
@@ -29,9 +29,15 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   return (
     <NavigationContainer
+      // Spread DarkTheme rather than building the object by hand: React
+      // Navigation 7 added a required `fonts` key, and the native-stack header
+      // reads fonts.regular. A hand-built theme without it crashes the first
+      // screen with "Cannot read property 'regular' of undefined".
       theme={{
+        ...DarkTheme,
         dark: true,
         colors: {
+          ...DarkTheme.colors,
           primary: colors.lime,
           background: colors.background,
           card: colors.surface,
