@@ -206,6 +206,12 @@ export interface MissionProgress {
 export interface MissionSummary {
   mission: Mission;
   events: import("@domain").MissionEvent[];
+  /**
+   * Which engine ranked the candidates, when one was consulted. Absent for a
+   * mission that never reached the ranker — the difference matters, because the
+   * review screen otherwise asserts a model was involved without showing one.
+   */
+  rankerProvenance?: TaskProvenance;
   proposal?: {
     discoveredStateId: string;
     candidateAssertions: Assertion[];
