@@ -1,7 +1,13 @@
-import { PropsWithChildren } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StatusBar, View } from "react-native";
+import { type PropsWithChildren } from "react";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
+  View,
+} from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { spacing, useThemeStyles, type AppTheme } from "@theme";
+import { makeStyles, spacing, useThemeStyles, type AppTheme } from "@theme";
 
 /** Standard screen frame — safe area, background, keyboard, optional scroll. */
 export function AppScreen({
@@ -44,13 +50,13 @@ export function AppScreen({
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   root: { flex: 1, backgroundColor: colors.background },
   flex: { flex: 1 },
   padded: {
-    paddingHorizontal: 20,
+    paddingHorizontal: spacing.gutter,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xxxl,
     gap: spacing.md,
   },
-});
+}));

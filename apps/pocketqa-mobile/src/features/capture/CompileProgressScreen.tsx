@@ -1,12 +1,19 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
+import { layout, makeStyles, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, ProgressStageList,
-  StatusPill, TopBar,
+  AppScreen,
+  BottomActionBar,
+  Card,
+  GhostButton,
+  InlineNotice,
+  ProgressStageList,
+  Spacer,
+  StatusPill,
+  TopBar,
 } from "@components";
 import { PocketQaNative, type CompileProgress, type PocketQaEvent } from "@native";
-import { useAppTheme } from "@theme";
+import { type ScreenProps } from "@navigation";
 
 const INITIAL_STAGES: CompileProgress["stages"] = [
   { id: "finalising", label: "Finalising evidence", state: "pending" },
@@ -19,6 +26,7 @@ const INITIAL_STAGES: CompileProgress["stages"] = [
 
 export function CompileProgressScreen({ navigation, route }: ScreenProps<"CompileProgress">) {
   const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [job, setJob] = useState<CompileProgress>({
     jobId: route.params.compileJobId,
     engine: "deterministic-local",
@@ -43,7 +51,7 @@ export function CompileProgressScreen({ navigation, route }: ScreenProps<"Compil
       <TopBar title="Building your test" subtitle="Deterministic local pipeline" />
       <AppScreen>
         <Card>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <View style={styles.engineRow}>
             <Text style={typography.eyebrow}>Active engine</Text>
             <StatusPill
               label={engineLabel(job.engine)}
@@ -66,11 +74,15 @@ export function CompileProgressScreen({ navigation, route }: ScreenProps<"Compil
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Return" onPress={() => navigation.replace("Home")} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
       </BottomActionBar>
     </>
   );
 }
+
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  engineRow: layout.rowBetween,
+}));
 
 function engineLabel(engine: CompileProgress["engine"]): string {
   switch (engine) {

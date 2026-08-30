@@ -1,11 +1,19 @@
 import { StyleSheet, Text, View } from "react-native";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
-import { StatusPill } from "./StatusPill";
-import type { StepResult, TestStep } from "@domain";
+import {
+  layout,
+  makeStyles,
+  radius,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
+import { StatusPill } from "@components";
+import { type StepResult, type TestStep } from "@domain";
 
 /** Replay step + result row (§7.11 timeline). */
 export function TimelineRow({ step, index, result }: { step: TestStep; index: number; result?: StepResult }) {
-  const { colors, typography } = useAppTheme();
+  const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   const tone = result?.status === "pass" ? "lime" : result?.status === "fail" ? "red" : "dim";
   return (
@@ -13,14 +21,14 @@ export function TimelineRow({ step, index, result }: { step: TestStep; index: nu
       <View style={styles.tick}>
         <Text style={typography.metadata}>{String(index + 1).padStart(2, "0")}</Text>
       </View>
-      <View style={{ flex: 1 }}>
+      <View style={layout.fill}>
         <Text style={typography.body} numberOfLines={2}>{step.label}</Text>
         <Text style={typography.metadata}>
           {step.selector ? `${step.selector.primary.strategy}=${step.selector.primary.value}` : step.action}
           {result?.elapsedMs !== undefined ? ` · ${result.elapsedMs}ms` : ""}
         </Text>
         {result?.reason && (
-          <Text style={[typography.bodyMuted, { color: colors.red, marginTop: 4 }]}>
+          <Text style={[typography.bodyMuted, styles.reason]}>
             {result.errorCode ? `[${result.errorCode}] ` : ""}{result.reason}
           </Text>
         )}
@@ -30,19 +38,21 @@ export function TimelineRow({ step, index, result }: { step: TestStep; index: nu
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+    ...layout.row,
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   tick: {
-    width: 34, height: 34, borderRadius: 9,
-    borderWidth: 1, borderColor: colors.border,
+    width: 34,
+    height: 34,
+    borderRadius: radius.control,
+    borderWidth: 1,
+    borderColor: colors.border,
     backgroundColor: colors.surface,
-    alignItems: "center", justifyContent: "center",
+    ...layout.center,
   },
-});
+  reason: { color: colors.red, marginTop: spacing.xs },
+}));

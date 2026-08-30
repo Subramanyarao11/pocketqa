@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
-import { Text, View } from "react-native";
+import { Text } from "react-native";
 import { Play } from "lucide-react-native";
 import type { ScreenProps } from "@navigation";
 import {
-  AppScreen, Card, PersistentStopButton, PrimaryButton, StatusPill, TopBar,
+  AppScreen, Card, LogView, PersistentStopButton, PrimaryButton, ProgressBar,
+  StatusPill, TopBar,
 } from "@components";
 import { PocketQaNative, type PocketQaEvent, type ReplayProgress } from "@native";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { iconSize, useAppTheme } from "@theme";
 
 export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"ReplayMissionControl">) {
   const { colors, typography } = useAppTheme();
-  const styles = useThemeStyles(createStyles);
   const [runId, setRunId] = useState<string | null>(null);
   const [progress, setProgress] = useState<ReplayProgress | null>(null);
   const [log, setLog] = useState<string[]>([]);
@@ -38,7 +38,7 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
     setRunId(res.runId);
   };
 
-  const pct = progress ? Math.round((progress.stepIndex + 1) / progress.totalSteps * 100) : 0;
+  const completion = progress ? (progress.stepIndex + 1) / progress.totalSteps : 0;
 
   return (
     <>
@@ -53,9 +53,7 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
           <Text style={typography.eyebrow}>Approved test</Text>
           <Text style={typography.title}>{route.params.testId}</Text>
           <Text style={typography.metadata}>v{route.params.version}</Text>
-          <View style={styles.bar}>
-            <View style={[styles.fill, { width: `${pct}%` }]} />
-          </View>
+          <ProgressBar value={completion} accessibilityLabel="Replay progress" />
           <Text style={typography.metadata}>
             {progress ? `Step ${progress.stepIndex + 1} of ${progress.totalSteps}` : "Ready"}
           </Text>
@@ -63,15 +61,12 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
 
         <Card>
           <Text style={typography.eyebrow}>Live executor log</Text>
-          {log.length === 0 && <Text style={typography.bodyMuted}>Tap ▶ Replay locally to start.</Text>}
-          {log.map((line, i) => (
-            <Text key={i} style={styles.logLine}>{line}</Text>
-          ))}
+          <LogView lines={log} emptyLabel="Tap Replay locally to start." />
         </Card>
 
         <PrimaryButton
           label={running ? "Running…" : "Replay locally"}
-          icon={<Play color={colors.onAccent} size={17} fill={colors.onAccent} />}
+          icon={<Play color={colors.onAccent} size={iconSize.md} fill={colors.onAccent} />}
           onPress={start}
           disabled={running}
           block
@@ -81,11 +76,3 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
     </>
   );
 }
-
-const createStyles = ({ colors }: AppTheme) => ({
-  bar: {
-    height: 6, borderRadius: 3, backgroundColor: colors.surfaceMuted, marginTop: spacing.sm, overflow: "hidden",
-  },
-  fill: { height: 6, backgroundColor: colors.lime },
-  logLine: { fontFamily: "monospace", fontSize: 12, lineHeight: 19, color: colors.textMuted, paddingVertical: 2 },
-});

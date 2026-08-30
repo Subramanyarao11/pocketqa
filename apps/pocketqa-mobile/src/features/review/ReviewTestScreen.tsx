@@ -1,15 +1,35 @@
 import { useEffect, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Text, View } from "react-native";
 import { CheckCircle2, Save, Trash2 } from "lucide-react-native";
-import type { ScreenProps } from "@navigation";
 import {
-  AppScreen, BottomActionBar, Card, DangerButton, GhostButton, InlineNotice,
-  PrimaryButton, ReviewStepCard, StatusPill, TopBar,
+  iconSize,
+  layout,
+  makeStyles,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
+import {
+  AppScreen,
+  BottomActionBar,
+  Card,
+  Chip,
+  DangerButton,
+  GhostButton,
+  InlineNotice,
+  LinkButton,
+  PrimaryButton,
+  ReviewStepCard,
+  Spacer,
+  StatusPill,
+  TextField,
+  TopBar,
 } from "@components";
-import { useDraftEditorStore } from "@store";
 import { nextId, type Assertion, type AssertionKind } from "@domain";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { PocketQaNative } from "@native";
+import { type ScreenProps } from "@navigation";
+import { useDraftEditorStore } from "@store";
 
 const ASSERTION_KINDS: AssertionKind[] = ["textVisible", "textAbsent", "elementEnabled", "elementDisabled", "onScreen", "elementCount"];
 
@@ -102,12 +122,11 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
       <TopBar title="Review draft" subtitle="Inspect every step before approval" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card>
-          <TextInput
-            style={styles.title}
+          <TextField
+            variant="title"
             value={draft.name}
             onChangeText={(name) => patch({ name })}
             placeholder="Test name"
-            placeholderTextColor={colors.textDim}
             accessibilityLabel="Test name"
           />
           <Text style={typography.bodyMuted}>{draft.intent}</Text>
@@ -147,13 +166,16 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
           <Card>
             {draft.finalAssertions.map((a) => (
               <View key={a.id} style={styles.assertion}>
-                <View style={{ flex: 1 }}>
+                <View style={layout.fill}>
                   <Text style={typography.body}>{a.kind} — "{a.target}"</Text>
                   <Text style={typography.bodyMuted}>{a.reason}</Text>
                 </View>
-                <TouchableOpacity onPress={() => removeFinalAssertion(a.id)} accessibilityLabel="Remove assertion">
-                  <Text style={{ color: colors.red, fontWeight: "600" }}>Remove</Text>
-                </TouchableOpacity>
+                <LinkButton
+                  label="Remove"
+                  tone="red"
+                  onPress={() => removeFinalAssertion(a.id)}
+                  accessibilityLabel="Remove assertion"
+                />
               </View>
             ))}
           </Card>
@@ -163,26 +185,18 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
           <Text style={typography.eyebrow}>Add final assertion</Text>
           <View style={styles.kindRow}>
             {ASSERTION_KINDS.map((k) => (
-              <TouchableOpacity
-                key={k}
-                onPress={() => setNewKind(k)}
-                accessibilityRole="radio"
-                accessibilityState={{ selected: newKind === k }}
-                style={[styles.kindChip, newKind === k && styles.kindChipActive]}
-              >
-                <Text style={{ color: newKind === k ? colors.onAccent : colors.text, fontSize: 12 }}>{k}</Text>
-              </TouchableOpacity>
+              <Chip key={k} label={k} selected={newKind === k} onPress={() => setNewKind(k)} />
             ))}
           </View>
-          <TextInput
-            style={styles.input}
+          <TextField
             value={newTarget}
             onChangeText={setNewTarget}
             placeholder="Target text or element ID"
-            placeholderTextColor={colors.textDim}
             accessibilityLabel="Assertion target"
+            style={styles.field}
           />
-          <View style={{ flexDirection: "row", justifyContent: "flex-end" }}>
+          <View style={layout.row}>
+            <Spacer />
             <PrimaryButton label="Add assertion" onPress={addFinalAssertion} disabled={!newTarget.trim()} />
           </View>
         </Card>
@@ -194,17 +208,17 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
       <BottomActionBar>
         <DangerButton
           label="Discard"
-          icon={<Trash2 color={colors.red} size={16} />}
+          icon={<Trash2 color={colors.red} size={iconSize.sm} />}
           onPress={() => {
             PocketQaNative.deleteSession(draft.id).catch(() => {});
             navigation.replace("Home");
           }}
         />
-        <GhostButton label="Save" icon={<Save color={colors.text} size={16} />} onPress={() => useDraftEditorStore.getState().save()} />
-        <View style={{ flex: 1 }} />
+        <GhostButton label="Save" icon={<Save color={colors.text} size={iconSize.sm} />} onPress={() => useDraftEditorStore.getState().save()} />
+        <Spacer />
         <PrimaryButton
           label="Approve"
-          icon={<CheckCircle2 color={colors.onAccent} size={17} />}
+          icon={<CheckCircle2 color={colors.onAccent} size={iconSize.md} />}
           onPress={async () => {
             try {
               await approve();
@@ -219,38 +233,14 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
-  title: {
-    color: colors.text,
-    fontSize: 20,
-    fontWeight: "600",
-    borderRadius: radius.input,
-    padding: spacing.sm,
-    borderWidth: 1, borderColor: colors.border,
-    backgroundColor: colors.surfaceRaised,
-  },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
+  pillRow: { ...layout.rowWrap, marginTop: spacing.sm },
   assertion: {
-    flexDirection: "row", alignItems: "center", gap: spacing.md,
-    paddingVertical: spacing.sm, borderBottomWidth: 1, borderBottomColor: colors.border,
-  },
-  input: {
-    color: colors.text,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    borderRadius: radius.input,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
+    ...layout.row,
     paddingVertical: spacing.sm,
-    marginVertical: spacing.sm,
-    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
-  kindRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  kindChip: {
-    minHeight: 36,
-    paddingHorizontal: spacing.md, paddingVertical: 7,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  kindChipActive: { backgroundColor: colors.lime, borderColor: colors.lime },
-});
+  field: { marginVertical: spacing.sm },
+  kindRow: layout.rowWrap,
+}));

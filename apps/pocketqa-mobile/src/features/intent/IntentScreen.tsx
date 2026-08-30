@@ -1,13 +1,34 @@
 import { useEffect, useRef, useState } from "react";
-import { Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ArrowRight, Check, Keyboard, Mic, Search } from "lucide-react-native";
-import type { ScreenProps } from "@navigation";
+import { Text, TouchableOpacity, View } from "react-native";
+import { ArrowRight, Keyboard, Mic, Search } from "lucide-react-native";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
-  StatusPill, TopBar,
+  iconSize,
+  layout,
+  makeStyles,
+  radius,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
+import {
+  AppScreen,
+  BottomActionBar,
+  Card,
+  Checkbox,
+  GhostButton,
+  InlineNotice,
+  PrimaryButton,
+  Radio,
+  RadioIndicator,
+  SegmentedControl,
+  Spacer,
+  StatusPill,
+  TextField,
+  TopBar,
 } from "@components";
 import { PocketQaNative, type TargetApp } from "@native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { type ScreenProps } from "@navigation";
 
 // Prefilling a coupon-retry intent made every test start life describing Demo
 // Shop, whatever app the operator picked — a Calculator capture arrived at review
@@ -137,24 +158,15 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
           <Text style={typography.bodyMuted}>Describe the behaviour that must remain true in plain language.</Text>
         </View>
         <View style={styles.modeRow}>
-          <TouchableOpacity
-            onPress={() => setMode("typed")}
-            style={[styles.tab, mode === "typed" && styles.tabActive]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: mode === "typed" }}
-          >
-            <Keyboard color={mode === "typed" ? colors.onAccent : colors.textMuted} size={16} />
-            <Text style={[styles.tabText, { color: mode === "typed" ? colors.onAccent : colors.text }]}>Typed</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => setMode("voice")}
-            style={[styles.tab, mode === "voice" && styles.tabActive]}
-            accessibilityRole="radio"
-            accessibilityState={{ selected: mode === "voice" }}
-          >
-            <Mic color={mode === "voice" ? colors.onAccent : colors.textMuted} size={16} />
-            <Text style={[styles.tabText, { color: mode === "voice" ? colors.onAccent : colors.text }]}>Voice</Text>
-          </TouchableOpacity>
+          <SegmentedControl
+            accessibilityLabel="Intent input mode"
+            value={mode}
+            onChange={setMode}
+            options={[
+              { value: "typed", label: "Typed", renderIcon: (c) => <Keyboard color={c} size={iconSize.sm} /> },
+              { value: "voice", label: "Voice", renderIcon: (c) => <Mic color={c} size={iconSize.sm} /> },
+            ]}
+          />
           {mode === "voice" && <StatusPill label="Preview always shown" tone="cyan" />}
         </View>
 
@@ -164,7 +176,8 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
             {voiceState === "idle" && (
               <>
                 <Text style={typography.body}>Tap to record. The transcript is shown before it becomes your intent — you always confirm it.</Text>
-                <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: spacing.sm }}>
+                <View style={styles.voiceRow}>
+                  <Spacer />
                   <PrimaryButton label="Start recording" onPress={startRecording} />
                 </View>
               </>
@@ -190,16 +203,16 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
                     tone={voiceState === "confirmed" ? "lime" : "amber"}
                   />
                 </View>
-                <TextInput
-                  style={styles.transcriptEdit}
+                <TextField
                   value={transcript}
                   onChangeText={(t) => { setTranscript(t); if (voiceState === "confirmed") setVoiceState("preview"); }}
-                  multiline
+                  variant="multiline"
+                  rows={2}
                   accessibilityLabel="Voice transcript editable preview"
                 />
                 <View style={styles.voiceRow}>
                   <GhostButton label="Re-record" onPress={startRecording} />
-                  <View style={{ flex: 1 }} />
+                  <Spacer />
                   <PrimaryButton
                     label={voiceState === "confirmed" ? "Confirmed" : "Confirm transcript"}
                     onPress={confirmTranscript}
@@ -212,32 +225,28 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
           </Card>
         )}
 
-        <TextInput
-          style={styles.textarea}
+        <TextField
           value={intent}
           onChangeText={setIntent}
-          multiline
+          variant="multiline"
+          rows={4}
+          maxLength={500}
+          showCounter
           placeholder="What behaviour must remain true?"
-          placeholderTextColor={colors.textDim}
           accessibilityLabel="Intent"
         />
-        <Text style={typography.metadata}>{intent.length} / 500</Text>
 
         <View style={styles.sectionIntro}>
           <Text style={typography.eyebrow}>Target app</Text>
           <Text style={typography.bodyMuted}>Only the app you choose is in capture scope.</Text>
         </View>
-        <View style={styles.searchWrap}>
-          <Search color={colors.textDim} size={18} />
-          <TextInput
-            style={styles.searchInput}
-            value={appQuery}
-            onChangeText={setAppQuery}
-            placeholder={`Search ${apps.length} installed apps`}
-            placeholderTextColor={colors.textDim}
-            accessibilityLabel="Search target apps"
-          />
-        </View>
+        <TextField
+          value={appQuery}
+          onChangeText={setAppQuery}
+          leadingIcon={<Search color={colors.textDim} size={iconSize.md} />}
+          placeholder={`Search ${apps.length} installed apps`}
+          accessibilityLabel="Search target apps"
+        />
         {visibleApps.map((app) => (
           <TouchableOpacity
             key={app.packageName}
@@ -256,9 +265,7 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
                   <Text style={typography.h2}>{app.displayName}</Text>
                   <Text style={typography.metadata}>{app.packageName}</Text>
                 </View>
-                <View style={[styles.radio, { borderColor: pkg === app.packageName ? colors.lime : colors.borderStrong }]}>
-                  {pkg === app.packageName && <View style={styles.radioDot} />}
-                </View>
+                <RadioIndicator selected={pkg === app.packageName} />
               </View>
             </Card>
           </TouchableOpacity>
@@ -281,43 +288,30 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
         <Text style={typography.eyebrow}>Starting state</Text>
         <Card>
           {fixturesForSelectedApp.map((f) => (
-            <TouchableOpacity
+            <Radio
               key={f.id}
-              onPress={() => setFixture(f.id)}
-              style={styles.fixtureRow}
-              accessibilityRole="radio"
-              accessibilityState={{ selected: fixture === f.id }}
-            >
-              <View style={[styles.radio, { borderColor: fixture === f.id ? colors.lime : colors.borderStrong }]}>
-                {fixture === f.id && <View style={styles.radioDot} />}
-              </View>
-              <Text style={typography.body}>{f.label}</Text>
-            </TouchableOpacity>
+              label={f.label}
+              selected={fixture === f.id}
+              onSelect={() => setFixture(f.id)}
+            />
           ))}
         </Card>
           </>
         )}
 
-        <TouchableOpacity
+        <Checkbox
+          checked={ack}
+          onChange={setAck}
+          label="I acknowledge that PocketQA will capture screen content in this app for the duration of the session."
           style={styles.consentRow}
-          onPress={() => setAck((a) => !a)}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: ack }}
-        >
-          <View style={[styles.box, { borderColor: ack ? colors.lime : colors.borderStrong, backgroundColor: ack ? colors.lime : "transparent" }]}>
-            {ack && <Check color={colors.onAccent} size={16} strokeWidth={3} />}
-          </View>
-          <Text style={[typography.body, { flex: 1 }]}>
-            I acknowledge that PocketQA will capture screen content in this app for the duration of the session.
-          </Text>
-        </TouchableOpacity>
+        />
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Cancel" onPress={() => navigation.goBack()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Continue"
-          icon={<ArrowRight color={colors.onAccent} size={17} />}
+          icon={<ArrowRight color={colors.onAccent} size={iconSize.md} />}
           disabled={invalid}
           onPress={async () => {
             if (!pkg) return;
@@ -335,76 +329,18 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   sectionIntro: { gap: spacing.xs, marginTop: spacing.sm },
-  modeRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, alignItems: "center", marginBottom: spacing.sm },
-  tab: {
-    minHeight: 42,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.control,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  tabActive: { backgroundColor: colors.lime, borderColor: colors.lime },
-  tabText: { fontSize: 14, lineHeight: 20, fontWeight: "600" },
-  textarea: {
-    minHeight: 112,
-    padding: spacing.md,
-    borderRadius: radius.input,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    textAlignVertical: "top",
-  },
-  searchWrap: {
-    minHeight: 50,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.input,
-    borderWidth: 1,
-    borderColor: colors.borderStrong,
-    backgroundColor: colors.surface,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  searchInput: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    color: colors.text,
-  },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  modeRow: { ...layout.rowWrap, gap: spacing.sm, marginBottom: spacing.sm },
+  rowBetween: layout.rowBetween,
   appCopy: { flex: 1, minWidth: 0 },
-  radio: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, alignItems: "center", justifyContent: "center",
-  },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.lime },
-  fixtureRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
   consentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
     borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  box: { width: 26, height: 26, borderRadius: 7, borderWidth: 2, alignItems: "center", justifyContent: "center" },
-  transcriptPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm },
-  transcriptEdit: {
-    minHeight: 72,
-    padding: spacing.md,
-    borderRadius: radius.input,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    color: colors.text,
-    backgroundColor: colors.surface,
-    textAlignVertical: "top",
-  },
-  voiceRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.sm, gap: spacing.sm },
-});
+  transcriptPills: { ...layout.rowWrap, marginBottom: spacing.sm },
+  voiceRow: { ...layout.row, marginTop: spacing.sm, gap: spacing.sm },
+}));

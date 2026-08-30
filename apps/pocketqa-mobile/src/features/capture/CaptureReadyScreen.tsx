@@ -1,11 +1,21 @@
-import { StyleSheet, Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
-import { AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar } from "@components";
+import { Text, View } from "react-native";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import {
+  AppScreen,
+  BottomActionBar,
+  Card,
+  GhostButton,
+  PrimaryButton,
+  Spacer,
+  StatusPill,
+  TopBar,
+} from "@components";
 import { PocketQaNative } from "@native";
-import { spacing, useAppTheme } from "@theme";
+import { type ScreenProps } from "@navigation";
 
 export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureReady">) {
   const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   return (
     <>
       <TopBar title="Ready to capture" subtitle="Review scope before switching apps" onBack={() => navigation.goBack()} />
@@ -37,7 +47,7 @@ export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureRe
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Cancel" onPress={() => navigation.goBack()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Start demonstration"
           onPress={async () => {
@@ -53,6 +63,6 @@ export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureRe
   );
 }
 
-const styles = StyleSheet.create({
-  rowStatus: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-});
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  rowStatus: { ...layout.rowWrap, gap: spacing.sm },
+}));

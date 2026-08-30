@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import {
-  AppScreen, Card, GhostButton, PersistentStopButton, StatusPill, TopBar,
+  AppScreen,
+  Card,
+  GhostButton,
+  LogView,
+  PersistentStopButton,
+  Spacer,
+  StatusPill,
+  TopBar,
 } from "@components";
-import { PocketQaNative, type MissionProgress, type MissionSummary, type PocketQaEvent } from "@native";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import {
+  PocketQaNative,
+  type MissionProgress,
+  type MissionSummary,
+  type PocketQaEvent,
+} from "@native";
+import { type ScreenProps } from "@navigation";
 
 export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<"ExplorerMissionControl">) {
   const { typography } = useAppTheme();
@@ -48,10 +60,7 @@ export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<
 
         <Card>
           <Text style={typography.eyebrow}>Mission trace</Text>
-          {log.length === 0 && <Text style={typography.bodyMuted}>Waiting for events…</Text>}
-          {log.map((line, i) => (
-            <Text key={i} style={styles.logLine}>{line}</Text>
-          ))}
+          <LogView lines={log} emptyLabel="Waiting for events…" />
         </Card>
 
         {summary?.proposal && (
@@ -63,7 +72,7 @@ export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<
             ))}
             <View style={styles.rowActions}>
               <GhostButton label="Discard" onPress={() => navigation.replace("Home")} />
-              <View style={{ flex: 1 }} />
+              <Spacer />
               <GhostButton
                 label="Open in review"
                 onPress={() => navigation.navigate("MissionReview", { missionId: summary.mission.id })}
@@ -77,8 +86,7 @@ export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
-  rowPills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
-  logLine: { fontFamily: "monospace", fontSize: 12, color: colors.textMuted, paddingVertical: 2 },
-  rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md, alignItems: "center" },
-});
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  rowPills: { ...layout.rowWrap, marginTop: spacing.sm },
+  rowActions: { ...layout.row, gap: spacing.sm, marginTop: spacing.md },
+}));

@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
-import { PrimaryButton } from "./Button";
+import { makeStyles, radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { PrimaryButton } from "@components";
 
 export interface EmptyStateProps {
   title: string;
@@ -23,7 +23,7 @@ export function EmptyState({ title, detail, action, icon }: EmptyStateProps) {
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   root: {
     padding: spacing.xxl,
     alignItems: "center",
@@ -36,4 +36,4 @@ const createStyles = ({ colors }: AppTheme) => ({
     justifyContent: "center",
   },
   detail: { textAlign: "center", maxWidth: 320 },
-});
+}));

@@ -1,9 +1,24 @@
 import { useState } from "react";
-import { StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight } from "lucide-react-native";
+import {
+  iconSize,
+  layout,
+  spacing,
+  useAppTheme,
+  makeStyles,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
 import { Card } from "./Card";
+import { Chip } from "./Chip";
+import { CodeChip } from "./CodeChip";
+import { IconButton } from "./IconButton";
+import { LinkButton } from "./LinkButton";
+import { PrimaryButton } from "./Button";
+import { Spacer } from "./Spacer";
 import { StatusPill } from "./StatusPill";
+import { TextField } from "./TextField";
 import type { AssertionKind, CompilerEngine, TestStep } from "@domain";
 
 const ASSERTION_KINDS: AssertionKind[] = ["textVisible", "textAbsent", "elementEnabled", "elementDisabled", "onScreen"];
@@ -38,10 +53,15 @@ export function ReviewStepCard({
 
   return (
     <Card tone={warn ? "warn" : "surface"}>
-      <TouchableOpacity onPress={() => setExpanded((x) => !x)} accessibilityRole="button" accessibilityLabel={`Step ${index + 1}: ${step.label}`}>
+      <TouchableOpacity
+        onPress={() => setExpanded((x) => !x)}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`Step ${index + 1}: ${step.label}`}
+      >
         <View style={styles.headline}>
-          <View style={{ flex: 1 }}>
-            <Text style={[typography.metadata]}>{`Step ${index + 1}`}</Text>
+          <View style={layout.fill}>
+            <Text style={typography.metadata}>{`Step ${index + 1}`}</Text>
             <Text style={typography.body} numberOfLines={2}>{step.label}</Text>
             <View style={styles.pillRow}>
               <StatusPill label={step.action} tone="dim" />
@@ -59,8 +79,8 @@ export function ReviewStepCard({
             </View>
           </View>
           {expanded
-            ? <ChevronDown color={colors.textDim} size={18} />
-            : <ChevronRight color={colors.textDim} size={18} />}
+            ? <ChevronDown color={colors.textDim} size={iconSize.md} />
+            : <ChevronRight color={colors.textDim} size={iconSize.md} />}
         </View>
       </TouchableOpacity>
       {expanded && (
@@ -74,9 +94,7 @@ export function ReviewStepCard({
             <View style={styles.rowBetween}>
               <Text style={typography.eyebrow}>No selector resolved</Text>
               {onOpenSelectors && (
-                <TouchableOpacity onPress={onOpenSelectors} accessibilityLabel="Choose a selector">
-                  <Text style={styles.link}>Choose target</Text>
-                </TouchableOpacity>
+                <LinkButton label="Choose target" onPress={onOpenSelectors} accessibilityLabel="Choose a selector" />
               )}
             </View>
           )}
@@ -91,20 +109,18 @@ export function ReviewStepCard({
               <View style={styles.rowBetween}>
                 <Text style={typography.eyebrow}>Primary selector</Text>
                 {onOpenSelectors && (
-                  <TouchableOpacity onPress={onOpenSelectors} accessibilityLabel="View selector candidates">
-                    <Text style={styles.link}>View candidates</Text>
-                  </TouchableOpacity>
+                  <LinkButton label="View candidates" onPress={onOpenSelectors} accessibilityLabel="View selector candidates" />
                 )}
               </View>
-              <Text style={styles.selector}>{step.selector.primary.strategy} = {step.selector.primary.value}</Text>
+              <CodeChip>{`${step.selector.primary.strategy} = ${step.selector.primary.value}`}</CodeChip>
               <Text style={typography.bodyMuted}>{step.selector.primary.reason}</Text>
               {step.selector.fallbacks.length > 0 && (
                 <>
-                  <Text style={[typography.eyebrow, { marginTop: spacing.sm }]}>Fallbacks</Text>
+                  <Text style={[typography.eyebrow, styles.sectionGap]}>Fallbacks</Text>
                   {step.selector.fallbacks.map((f, i) => (
-                    <Text key={i} style={styles.selector}>
-                      {f.strategy} = {f.value} · {(f.confidence * 100).toFixed(0)}%
-                    </Text>
+                    <CodeChip key={i}>
+                      {`${f.strategy} = ${f.value} · ${(f.confidence * 100).toFixed(0)}%`}
+                    </CodeChip>
                   ))}
                 </>
               )}
@@ -114,13 +130,12 @@ export function ReviewStepCard({
           {(step.action === "typeText" || step.action === "clearText") && onEditInput && (
             <>
               <Text style={typography.eyebrow}>Input value</Text>
-              <TextInput
-                style={styles.input}
+              <TextField
                 value={step.input ?? ""}
                 onChangeText={onEditInput}
                 placeholder="Text to type"
-                placeholderTextColor={colors.textDim}
                 accessibilityLabel="Step input value"
+                style={styles.field}
               />
             </>
           )}
@@ -128,12 +143,12 @@ export function ReviewStepCard({
           {step.action === "wait" && onEditWait && (
             <>
               <Text style={typography.eyebrow}>Wait (ms)</Text>
-              <TextInput
-                style={styles.input}
+              <TextField
                 value={String(step.waitMs ?? 300)}
                 onChangeText={(v) => onEditWait(Math.max(0, Number(v.replace(/[^0-9]/g, "")) || 0))}
                 keyboardType="number-pad"
                 accessibilityLabel="Wait milliseconds"
+                style={styles.field}
               />
             </>
           )}
@@ -143,14 +158,17 @@ export function ReviewStepCard({
               <Text style={typography.eyebrow}>Step assertions</Text>
               {step.assertions.map((a) => (
                 <View key={a.id} style={styles.assertionRow}>
-                  <View style={{ flex: 1 }}>
+                  <View style={layout.fill}>
                     <Text style={typography.bodyMuted}>• {a.kind} — “{a.target}”</Text>
                     <Text style={typography.metadata}>{a.reason}</Text>
                   </View>
                   {onRemoveAssertion && (
-                    <TouchableOpacity onPress={() => onRemoveAssertion(a.id)} accessibilityLabel="Remove step assertion">
-                      <Text style={{ color: colors.red }}>Remove</Text>
-                    </TouchableOpacity>
+                    <LinkButton
+                      label="Remove"
+                      tone="red"
+                      onPress={() => onRemoveAssertion(a.id)}
+                      accessibilityLabel="Remove step assertion"
+                    />
                   )}
                 </View>
               ))}
@@ -162,38 +180,28 @@ export function ReviewStepCard({
               <Text style={typography.eyebrow}>Add step assertion</Text>
               <View style={styles.kindRow}>
                 {ASSERTION_KINDS.map((k) => (
-                  <TouchableOpacity
-                    key={k}
-                    onPress={() => setAssertKind(k)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ selected: assertKind === k }}
-                    style={[styles.kindChip, assertKind === k && styles.kindChipActive]}
-                  >
-                    <Text style={{ color: assertKind === k ? colors.onAccent : colors.text, fontSize: 12 }}>{k}</Text>
-                  </TouchableOpacity>
+                  <Chip key={k} label={k} selected={assertKind === k} onPress={() => setAssertKind(k)} />
                 ))}
               </View>
-              <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "center" }}>
-                <TextInput
-                  style={[styles.input, { flex: 1 }]}
+              <View style={styles.addRow}>
+                <TextField
                   value={assertTarget}
                   onChangeText={setAssertTarget}
                   placeholder="Target text or ID"
-                  placeholderTextColor={colors.textDim}
                   accessibilityLabel="Assertion target"
+                  style={layout.fill}
                 />
-                <TouchableOpacity
+                <PrimaryButton
+                  label="Add"
                   onPress={() => {
                     if (assertTarget.trim()) {
                       onAddAssertion(assertKind, assertTarget.trim());
                       setAssertTarget("");
                     }
                   }}
+                  disabled={!assertTarget.trim()}
                   accessibilityLabel="Add assertion"
-                  style={styles.addBtn}
-                >
-                  <Text style={{ color: colors.onAccent, fontWeight: "700" }}>Add</Text>
-                </TouchableOpacity>
+                />
               </View>
             </View>
           )}
@@ -201,13 +209,21 @@ export function ReviewStepCard({
           <View style={styles.controls}>
             {onMove && (
               <>
-                <TouchableOpacity onPress={() => onMove(-1)} style={styles.controlBtn} accessibilityLabel="Move step up"><Text style={{ color: colors.text }}>↑</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => onMove(1)} style={styles.controlBtn} accessibilityLabel="Move step down"><Text style={{ color: colors.text }}>↓</Text></TouchableOpacity>
+                <IconButton
+                  icon={<ArrowUp color={colors.text} size={iconSize.md} />}
+                  onPress={() => onMove(-1)}
+                  accessibilityLabel="Move step up"
+                />
+                <IconButton
+                  icon={<ArrowDown color={colors.text} size={iconSize.md} />}
+                  onPress={() => onMove(1)}
+                  accessibilityLabel="Move step down"
+                />
               </>
             )}
-            <View style={{ flex: 1 }} />
+            <Spacer />
             {onDelete && (
-              <TouchableOpacity onPress={onDelete} accessibilityLabel="Delete step"><Text style={{ color: colors.red, fontWeight: "600" }}>Delete</Text></TouchableOpacity>
+              <LinkButton label="Delete" tone="red" onPress={onDelete} accessibilityLabel="Delete step" />
             )}
           </View>
         </View>
@@ -230,35 +246,14 @@ function provenanceForStep(
   }
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   headline: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
+  pillRow: { ...layout.rowWrap, marginTop: spacing.sm },
   detail: { marginTop: spacing.md, gap: spacing.xs },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  link: { color: colors.cyan, fontWeight: "600" },
-  selector: {
-    fontFamily: "monospace",
-    fontSize: 12,
-    color: colors.cyan,
-    backgroundColor: colors.infoSurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-  },
-  input: {
-    color: colors.text,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    borderRadius: radius.input,
-    minHeight: 48,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginVertical: spacing.xs,
-  },
-  assertionRow: {
-    flexDirection: "row", alignItems: "center",
-    gap: spacing.sm, paddingVertical: 4,
-  },
+  rowBetween: { ...layout.rowBetween, gap: spacing.sm },
+  sectionGap: { marginTop: spacing.sm },
+  field: { marginVertical: spacing.xs },
+  assertionRow: { ...layout.row, gap: spacing.sm },
   addAssertion: {
     marginTop: spacing.sm,
     paddingTop: spacing.sm,
@@ -266,26 +261,7 @@ const createStyles = ({ colors }: AppTheme) => ({
     borderTopColor: colors.border,
     gap: spacing.xs,
   },
-  kindRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
-  kindChip: {
-    minHeight: 36,
-    paddingHorizontal: spacing.md, paddingVertical: 7,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1, borderColor: colors.border,
-  },
-  kindChipActive: { backgroundColor: colors.lime, borderColor: colors.lime },
-  addBtn: {
-    minHeight: 44,
-    paddingHorizontal: spacing.lg, paddingVertical: 8,
-    borderRadius: radius.control,
-    backgroundColor: colors.lime,
-    justifyContent: "center",
-  },
-  controls: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm, alignItems: "center" },
-  controlBtn: {
-    width: 40, height: 40, borderRadius: 10,
-    borderWidth: 1, borderColor: colors.border,
-    alignItems: "center", justifyContent: "center",
-  },
-});
+  kindRow: layout.rowWrap,
+  addRow: { ...layout.row, gap: spacing.sm },
+  controls: { ...layout.row, gap: spacing.sm, marginTop: spacing.sm },
+}));
