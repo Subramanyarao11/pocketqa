@@ -205,18 +205,60 @@ the flake verdict all on screen.
 > "The checkout failed, so the coupon confirmation never appeared — and the test
 > caught exactly that, without me telling it what to look for."
 
-**E2 — cause one live with `coupon-retry`.** That fixture makes the first
-checkout attempt fail and turns the button into *Retry*. Record with the fixture
-selected, demonstrate as far as **Place Order** and *stop there* — do not tap
-Retry — assert `SAVE20 applied`, approve, replay. It fails with
-`assertion-regression`.
+**E2 — the checkout-retry failure (run end to end and verified).** The best
+failure to stage, because the flow is a real one: a payment fails and the test
+proves the coupon confirmation never arrived.
 
-**E3 — assert something untrue.** Add a final assertion for text that will not
-be on the last screen. Quickest, but say what you are doing.
+> **Understand the mechanism before narrating it.** The fixture is *baked into
+> the test* at record time, so replay reproduces the same app behaviour — a
+> fixture alone can never make a test fail. The failure comes from the flow
+> stopping at the error screen while an assertion expects the *success* text.
+> Say "the payment failed, so the confirmation never appeared" — which is true —
+> not "the app changed".
 
-> **The Add assertion button sits under the keyboard.** Type the target, dismiss
-> the keyboard, *then* tap Add assertion. Tapping with the keyboard up hits the
-> keyboard and the assertion is silently not added.
+1. New test, intent `SAVE20 stays applied through checkout`.
+2. Search `Shop`, tap the **Demo Shop** row — three fixture chips appear.
+3. Confirm **Coupon retry (canonical)** is selected. It is selected by default.
+4. Tick acknowledge → **Continue** → **Start demonstration**.
+5. Tap **Add** on Wireless Headphones, then **Cart**.
+6. Tap **Coupon Code**, type `SAVE20`, dismiss the keyboard, tap **Apply**.
+   → `Discount (20%): -$16.00` · `Total: $63.99`
+7. Tap **Checkout**, then **Place Order**.
+   → `Payment failed. Please try again.` · `SAVE20 still applied` · button becomes **Retry**
+8. **Stop — do not tap Retry.** Switch to PocketQA, tap **Finish**.
+   → ~30s → 7 steps, 1 proposed assertion `SAVE20 still applied`
+9. Add a second assertion for the **success** text `SAVE20 applied` (see E3 for
+   the exact technique — this is the fiddly step).
+10. **Approve**, then **Replay locally** → 7 steps · ~22.9s.
+11. Evidence: **FAIL** · `assertion-regression` ·
+    *Final assertion failed: expected "SAVE20 applied"*.
+
+On the evidence screen, point at each of these:
+
+| Element | What it says |
+|---|---|
+| Failure Detective | `assertion-regression` — "Verify the expected value still matches the intent, or update the assertion." |
+| Why this failed | "Explained by google/gemini-2.5-flash", with "Explanation only — not applied" |
+| Provenance | `connected-assist` and **Online** — this run *did* use the network, because the explanation needed it. Compare with Path A's passing run, which said "No network used". |
+| Assertions | one **passed** (`SAVE20 still applied`) and one **failed** (`SAVE20 applied`) — it names exactly which expectation broke |
+
+**E3 — assert something untrue (30s).** Same technique as E2 step 9, on any
+draft. Pick text that will not be on the last screen — `Order Confirmed` after a
+flow that stops at the cart works.
+
+1. On the review screen scroll to **Add final assertion**. `textVisible` is
+   already the selected kind.
+2. Tap **Target text or element ID** and type your text. The keyboard opens and
+   pushes the form up.
+3. **Dismiss the keyboard**, *then* tap **Add assertion**.
+4. Confirm a new row appeared, labelled "Added during review." If the form
+   cleared but no row appeared, it did not save — repeat.
+
+> **The Add assertion button hides under the keyboard.** With the keyboard up it
+> sits behind it, your tap hits the keyboard, and the assertion is *silently not
+> added*. It took four attempts to get right during testing — rehearse it. The
+> button is also disabled until the field has text, so if it looks greyed out
+> the typing did not land in the field.
 
 **Not a failure fixture:** `selector-drift` renames Apply to "Use coupon" but
 keeps its test id, so a recorded test still passes. That is a resilience story —
