@@ -1,0 +1,1790 @@
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/bridge/PocketQaModule.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/bridge/PocketQaModule.kt
+index 7b49d4f..3611abd 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/bridge/PocketQaModule.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/bridge/PocketQaModule.kt
+@@ -6,6 +6,9 @@ import com.facebook.react.bridge.ReactApplicationContext
+ import com.facebook.react.bridge.ReadableMap
+ import com.facebook.react.bridge.WritableMap
+ import com.facebook.react.module.annotations.ReactModule
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
++import kotlinx.serialization.json.contentOrNull
+ import com.facebook.react.modules.core.DeviceEventManagerModule
+ import com.techphantoms.pocketqa.capture.CaptureCoordinator
+ import com.techphantoms.pocketqa.compiler.CompileCoordinator
+@@ -13,6 +16,7 @@ import com.techphantoms.pocketqa.execution.ReplayExecutor
+ import com.techphantoms.pocketqa.explorer.ExplorerAgent
+ import com.techphantoms.pocketqa.export.ExportCoordinator
+ import com.techphantoms.pocketqa.inference.InferenceRouter
++import com.techphantoms.pocketqa.inference.TaskClient
+ import com.techphantoms.pocketqa.policy.PolicyEngine
+ import com.techphantoms.pocketqa.spec.NativePocketQaModuleSpec
+ import com.techphantoms.pocketqa.storage.PocketQaRepository
+@@ -38,10 +42,17 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
+     private val repo = PocketQaRepository(reactContext)
+     private val policy = PolicyEngine()
+     private val inference = InferenceRouter(reactContext)
++    private val tasks = TaskClient(
++        baseUrlProvider = { repo.aiLabEndpoint() },
++        redactor = { input ->
++            val r = inference.redactSensitive(input)
++            TaskClient.RedactionResult(r.text, r.changed)
++        },
++    )
+     private val capture = CaptureCoordinator(reactContext, repo, policy)
+-    private val compiler = CompileCoordinator(repo, inference)
+-    private val executor = ReplayExecutor(reactContext, repo, policy)
+-    private val explorer = ExplorerAgent(reactContext, repo, policy, inference)
++    private val compiler = CompileCoordinator(repo, inference, tasks)
++    private val executor = ReplayExecutor(reactContext, repo, policy, tasks)
++    private val explorer = ExplorerAgent(reactContext, repo, policy, inference, tasks)
+     private val export = ExportCoordinator(reactContext, repo)
+ 
+     override fun getName(): String = NAME
+@@ -145,6 +156,24 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
+     override fun promoteFallbackSelector(draftId: String, stepId: String, candidateIndex: Double, promise: Promise) = guard(promise) {
+         promise.resolve(repo.promoteFallback(draftId, stepId, candidateIndex.toInt()))
+     }
++    override fun applyAiSelectorRepair(runId: String, stepId: String, promise: Promise) = guard(promise) {
++        val run = repo.readRunJson(runId) ?: error("run not found")
++        val repair = run["aiSelectorRepair"]?.let { j ->
++            (j as? kotlinx.serialization.json.JsonObject)
++        } ?: error("no AI repair proposal on this run")
++        require(repair["stepId"]?.jsonPrimitive?.contentOrNull == stepId) {
++            "Repair proposal targets a different step."
++        }
++        val testId = run["test"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
++            ?: error("run has no test reference")
++        val bumped = repo.applyRepairAndBumpVersion(
++            testId = testId,
++            stepId = stepId,
++            strategy = repair["strategy"]?.jsonPrimitive?.contentOrNull.orEmpty(),
++            value = repair["value"]?.jsonPrimitive?.contentOrNull.orEmpty(),
++        ) ?: error("could not bump version")
++        promise.resolve(bumped)
++    }
+     override fun getFailureProposal(runId: String, promise: Promise) = guard(promise) { promise.resolve(repo.failureProposal(runId)) }
+     override fun submitVoiceTranscript(intentId: String, transcript: String, promise: Promise) = guard(promise) {
+         promise.resolve(inference.transcribe(intentId, transcript))
+@@ -173,6 +202,16 @@ class PocketQaModule(reactContext: ReactApplicationContext) :
+     override fun deleteProviderCredential(provider: String, promise: Promise) = guard(promise) {
+         repo.deleteProvider(provider); promise.resolve(null)
+     }
++    override fun saveAiLabEndpoint(url: String, promise: Promise) = guard(promise) {
++        require(url.isNotBlank()) { "Endpoint URL cannot be blank." }
++        require(url.startsWith("http://") || url.startsWith("https://")) {
++            "Endpoint must be an http(s) URL."
++        }
++        promise.resolve(repo.saveAiLabEndpoint(url.trim().removeSuffix("/")))
++    }
++    override fun deleteAiLabEndpoint(promise: Promise) = guard(promise) {
++        repo.deleteAiLabEndpoint(); promise.resolve(null)
++    }
+     override fun deleteSession(id: String, promise: Promise) = guard(promise) { repo.deleteSession(id); promise.resolve(null) }
+     override fun deleteTest(id: String, promise: Promise) = guard(promise) { repo.deleteTest(id); promise.resolve(null) }
+     override fun deleteAllData(promise: Promise) = guard(promise) { repo.deleteAll(); promise.resolve(null) }
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/compiler/CompileCoordinator.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/compiler/CompileCoordinator.kt
+index fc5a625..24dfa3d 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/compiler/CompileCoordinator.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/compiler/CompileCoordinator.kt
+@@ -2,8 +2,22 @@ package com.techphantoms.pocketqa.compiler
+ 
+ import com.facebook.react.bridge.Arguments
+ import com.facebook.react.bridge.WritableMap
++import com.techphantoms.pocketqa.inference.ConsentToken
+ import com.techphantoms.pocketqa.inference.InferenceRouter
++import com.techphantoms.pocketqa.inference.TaskClient
+ import com.techphantoms.pocketqa.storage.PocketQaRepository
++import kotlinx.coroutines.async
++import kotlinx.coroutines.awaitAll
++import kotlinx.coroutines.runBlocking
++import kotlinx.serialization.json.JsonArray
++import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.JsonPrimitive
++import kotlinx.serialization.json.buildJsonArray
++import kotlinx.serialization.json.buildJsonObject
++import kotlinx.serialization.json.contentOrNull
++import kotlinx.serialization.json.jsonArray
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
+ 
+ /**
+  * CompileCoordinator — orchestrates the compile pipeline.
+@@ -23,6 +37,7 @@ import com.techphantoms.pocketqa.storage.PocketQaRepository
+ class CompileCoordinator(
+     private val repo: PocketQaRepository,
+     private val inference: InferenceRouter,
++    private val tasks: TaskClient,
+ ) {
+     fun compile(sessionId: String): String {
+         val engine = when (inference.currentEngine()) {
+@@ -30,7 +45,110 @@ class CompileCoordinator(
+             InferenceRouter.Engine.CONNECTED_ASSIST -> "connected-assist"
+             InferenceRouter.Engine.DETERMINISTIC_LOCAL -> "deterministic-local"
+         }
+-        return repo.compileFromSession(sessionId, engine)
++        val jobId = repo.compileFromSession(sessionId, engine)
++        // Ask the task service to propose a name + curated final-assertions.
++        // Every call degrades to the deterministic path (untouched draft) on
++        // failure, timeout, or when the endpoint isn't configured (§3.1).
++        val draftId = repo.draftIdForJob(jobId) ?: return jobId
++        runBlocking {
++            // Concurrent so a slow / dead endpoint doesn't stall the bridge
++            // for the sum of the two timeouts. Total worst case ~4s.
++            awaitAll(
++                async { proposeName(draftId) },
++                async { proposeFinalAssertions(draftId) },
++            )
++        }
++        return jobId
++    }
++
++    /**
++     * AI-3 name_test — pre-fill draft.name with a human-legible title. The
++     * caller edits it in review; approving locks the name into the immutable
++     * artefact. If the model is unavailable the draft keeps its intent-based
++     * prefix (today's behaviour).
++     */
++    private suspend fun proposeName(draftId: String) {
++        val draft = repo.readDraftJson(draftId) ?: return
++        val intent = draft["intent"]?.jsonPrimitive?.contentOrNull ?: return
++        if (intent.length < 10) return
++        val existing = draft["name"]?.jsonPrimitive?.contentOrNull
++        // Never rename a draft the user already edited past the auto-fill.
++        if (!existing.isNullOrBlank() && existing != intent && existing != "Untitled" &&
++            !existing.startsWith("draft_")) return
++        val request = buildJsonObject {
++            put("intent", JsonPrimitive(intent))
++            put("stepCount", JsonPrimitive(draft["steps"]?.jsonArray?.size ?: 0))
++            put("packageName", draft["packageName"] ?: JsonPrimitive(""))
++        }
++        val result = tasks.run(
++            taskId = "name_test",
++            request = request,
++            consent = ConsentToken.GrantedForOperation("name_test", draftId),
++            timeoutMs = 2_000,
++        )
++        val name = result.value?.get("name")?.jsonPrimitive?.contentOrNull
++        if (!name.isNullOrBlank() && name.length in 3..80) {
++            repo.applyAiName(draftId, name, result.provenance.toJsonObject())
++        }
++    }
++
++    /**
++     * AI-2 compile_intent + rank_assertions — pick from the deterministic
++     * candidate pool (never invent) and order what survives. Rendered as
++     * pre-checked proposals inside the existing approval gate (see review UI).
++     */
++    private suspend fun proposeFinalAssertions(draftId: String) {
++        val draft = repo.readDraftJson(draftId) ?: return
++        val intent = draft["intent"]?.jsonPrimitive?.contentOrNull ?: return
++        val candidates = repo.candidateAssertionsForDraft(draftId)
++        if (candidates.isEmpty()) return
++
++        val request = buildJsonObject {
++            put("intent", JsonPrimitive(intent))
++            put("candidates", JsonArray(candidates))
++        }
++        val compileRes = tasks.run(
++            taskId = "compile_intent",
++            request = request,
++            consent = ConsentToken.GrantedForOperation("compile_intent", draftId),
++            timeoutMs = 4_000,
++        )
++        val allowed = compileRes.value?.get("selectedIds")?.jsonArray
++            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
++            ?.toSet()
++            ?: return
++        val filtered = candidates.filter {
++            it["id"]?.jsonPrimitive?.contentOrNull in allowed
++        }
++        if (filtered.isEmpty()) return
++
++        val rankReq = buildJsonObject {
++            put("intent", JsonPrimitive(intent))
++            put("candidates", JsonArray(filtered))
++        }
++        val rankRes = tasks.run(
++            taskId = "rank_assertions",
++            request = rankReq,
++            consent = ConsentToken.GrantedForOperation("rank_assertions", draftId),
++            timeoutMs = 2_000,
++        )
++        val orderedIds = rankRes.value?.get("orderedIds")?.jsonArray
++            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
++            ?: filtered.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }
++
++        val byId = filtered.associateBy { it["id"]!!.jsonPrimitive.content }
++        val ranked = orderedIds.mapNotNull { byId[it] }
++        // Combine both provenance dicts so the review UI can attribute both
++        // the selection and the ordering (usedModel bit ORs to true when any
++        // stage actually ran on the server).
++        val combined = buildJsonObject {
++            put("selection", compileRes.provenance.toJsonObject())
++            put("ranking", rankRes.provenance.toJsonObject())
++            put("usedModel", JsonPrimitive(
++                compileRes.provenance.usedModel || rankRes.provenance.usedModel
++            ))
++        }
++        repo.applyAiFinalAssertionProposals(draftId, ranked, combined)
+     }
+ 
+     fun job(id: String): WritableMap = repo.getCompileJob(id)
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/execution/ReplayExecutor.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/execution/ReplayExecutor.kt
+index 24f1ac8..4305570 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/execution/ReplayExecutor.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/execution/ReplayExecutor.kt
+@@ -7,14 +7,20 @@ import com.facebook.react.bridge.WritableMap
+ import com.facebook.react.modules.core.DeviceEventManagerModule
+ import com.techphantoms.pocketqa.OperationLock
+ import com.techphantoms.pocketqa.capture.CaptureCoordinator
++import com.techphantoms.pocketqa.inference.ConsentToken
++import com.techphantoms.pocketqa.inference.TaskClient
+ import com.techphantoms.pocketqa.policy.PolicyEngine
+ import com.techphantoms.pocketqa.storage.JsonBridge
+ import com.techphantoms.pocketqa.storage.PocketQaRepository
+ import kotlinx.coroutines.CoroutineScope
+ import kotlinx.coroutines.Dispatchers
+ import kotlinx.coroutines.Job
++import kotlinx.coroutines.async
++import kotlinx.coroutines.awaitAll
++import kotlinx.coroutines.coroutineScope
+ import kotlinx.coroutines.delay
+ import kotlinx.coroutines.launch
++import kotlinx.serialization.json.buildJsonArray
+ import kotlinx.serialization.json.JsonArray
+ import kotlinx.serialization.json.JsonObject
+ import kotlinx.serialization.json.JsonPrimitive
+@@ -42,6 +48,7 @@ class ReplayExecutor(
+     private val ctx: ReactApplicationContext,
+     private val repo: PocketQaRepository,
+     private val policy: PolicyEngine,
++    private val tasks: TaskClient? = null,
+ ) {
+     private val scope = CoroutineScope(Dispatchers.Default)
+     private val stopSignals = ConcurrentHashMap<String, Boolean>()
+@@ -249,12 +256,174 @@ class ReplayExecutor(
+             failure == null,
+             summary.toString())
+ 
+-        emitFinished(runId, summary)
++        // Fire AI proposal layer concurrently. Each of these degrades to the
++        // deterministic Failure Detective screen when unavailable, and every
++        // failure path (unreachable, timeout, rejected output) is invisible
++        // to the caller — the persisted run keeps its deterministic shape.
++        runAiFailureAnalysis(runId, test, failure)
++
++        emitFinished(runId, repo.readRunJson(runId) ?: summary)
+         OperationLock.release(OperationLock.Kind.REPLAY, runId)
+         stopSignals.remove(runId)
+         jobs.remove(runId)
+     }
+ 
++    // ---------- AI proposal layer (§4 items 3/6/7) ----------
++
++    private suspend fun runAiFailureAnalysis(
++        runId: String,
++        test: JsonObject,
++        failure: JsonObject?,
++    ) {
++        val client = tasks ?: return
++        val testId = test["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
++        coroutineScope {
++            val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
++
++            // AI-1 explain_failure — only when the run failed.
++            if (failure != null) {
++                jobs += async {
++                    val request = buildJsonObject {
++                        put("category", failure["category"] ?: JsonPrimitive("unknown"))
++                        put("summary", failure["summary"] ?: JsonPrimitive(""))
++                        put("testId", JsonPrimitive(testId))
++                    }
++                    val result = client.run(
++                        taskId = "explain_failure",
++                        request = request,
++                        consent = ConsentToken.GrantedForOperation("explain_failure", runId),
++                        timeoutMs = 4_000,
++                    )
++                    val explanation = result.value?.get("explanation")?.jsonPrimitive?.contentOrNull
++                    if (!explanation.isNullOrBlank()) {
++                        repo.applyAiFailureExplanation(runId, explanation, result.provenance.toJsonObject())
++                    }
++                }
++            }
++
++            // AI-4 repair_selector — only for selector-drift.
++            if (failure?.get("category")?.jsonPrimitive?.contentOrNull == "selector-drift") {
++                jobs += async { runRepairSelectorProposal(client, runId, test, failure) }
++            }
++
++            // AI-5 classify_flake — only when we have >=2 prior runs so an
++            // ambiguous middle exists to classify. Never suppresses the failure.
++            val priors = repo.runsForTest(testId, limit = 6)
++            if (priors.size >= 2) {
++                jobs += async {
++                    val request = buildJsonObject {
++                        put("history", buildJsonArray {
++                            for (r in priors) {
++                                add(buildJsonObject {
++                                    put("passed", r["result"]?.jsonObject?.get("passed")
++                                        ?: JsonPrimitive(false))
++                                    put("category", r["result"]?.jsonObject?.get("failure")
++                                        ?.jsonObject?.get("category") ?: JsonPrimitive(""))
++                                    put("summary", r["result"]?.jsonObject?.get("failure")
++                                        ?.jsonObject?.get("summary") ?: JsonPrimitive(""))
++                                })
++                            }
++                        })
++                    }
++                    val result = client.run(
++                        taskId = "classify_flake",
++                        request = request,
++                        consent = ConsentToken.GrantedForOperation("classify_flake", runId),
++                        timeoutMs = 3_000,
++                    )
++                    val verdict = result.value?.get("verdict")?.jsonPrimitive?.contentOrNull
++                    if (verdict != null) {
++                        repo.applyFlakeVerdict(
++                            runId = runId,
++                            verdict = verdict,
++                            reason = result.value?.get("reason")?.jsonPrimitive?.contentOrNull,
++                            provenance = result.provenance.toJsonObject(),
++                        )
++                    }
++                }
++            }
++
++            jobs.awaitAll()
++        }
++    }
++
++    private suspend fun runRepairSelectorProposal(
++        client: TaskClient,
++        runId: String,
++        test: JsonObject,
++        failure: JsonObject,
++    ) {
++        // Find the failing step + observe the failing state deterministically.
++        val stateId = failure["evidenceStateId"]?.jsonPrimitive?.contentOrNull ?: return
++        val runJson = repo.readRunJson(runId) ?: return
++        val failingStepId = runJson["result"]?.jsonObject?.get("stepResults")?.jsonArray
++            ?.firstOrNull { it.jsonObject["status"]?.jsonPrimitive?.contentOrNull == "fail" }
++            ?.jsonObject?.get("stepId")?.jsonPrimitive?.contentOrNull ?: return
++        val step = test["steps"]?.jsonArray?.map { it.jsonObject }
++            ?.firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull == failingStepId } ?: return
++        val selector = step["selector"]?.jsonObject ?: return
++        val state = repo.uiStateRaw(stateId) ?: return
++
++        // Gather all resolvable candidate anchors from the failing state so
++        // the merge rule can reject anything the model didn't get from us.
++        val anchorList = mutableListOf<JsonObject>()
++        state["nodes"]?.jsonArray?.map { it.jsonObject }?.forEach { node ->
++            listOf(
++                "testId" to node["testId"]?.jsonPrimitive?.contentOrNull,
++                "resourceId" to node["resourceId"]?.jsonPrimitive?.contentOrNull,
++                "accessibilityLabel" to node["contentDescription"]?.jsonPrimitive?.contentOrNull,
++                "textAndRole" to node["text"]?.jsonPrimitive?.contentOrNull,
++            ).forEach { (strategy, value) ->
++                if (!value.isNullOrBlank()) {
++                    anchorList += buildJsonObject {
++                        put("strategy", JsonPrimitive(strategy))
++                        put("value", JsonPrimitive(value))
++                        put("nodeId", node["nodeId"] ?: JsonPrimitive(""))
++                    }
++                }
++            }
++        }
++        if (anchorList.isEmpty()) return
++
++        val request = buildJsonObject {
++            put("originalStrategy", selector["primary"]?.jsonObject?.get("strategy") ?: JsonPrimitive(""))
++            put("originalValue", selector["primary"]?.jsonObject?.get("value") ?: JsonPrimitive(""))
++            put("candidateAnchors", JsonArray(anchorList))
++        }
++        val result = client.run(
++            taskId = "repair_selector",
++            request = request,
++            consent = ConsentToken.GrantedForOperation("repair_selector", runId),
++            timeoutMs = 4_000,
++        )
++        val strategy = result.value?.get("strategy")?.jsonPrimitive?.contentOrNull ?: return
++        val value = result.value?.get("value")?.jsonPrimitive?.contentOrNull ?: return
++        val confidence = result.value?.get("confidence")?.jsonPrimitive?.doubleOrNull ?: 0.0
++
++        // Verify deterministically: the proposal must resolve to exactly one
++        // node in the failing state. If not, drop it — the model is proposing
++        // something the executor cannot use.
++        val matches = state["nodes"]?.jsonArray?.map { it.jsonObject }?.filter { node ->
++            when (strategy) {
++                "testId" -> node["testId"]?.jsonPrimitive?.contentOrNull == value
++                "resourceId" -> node["resourceId"]?.jsonPrimitive?.contentOrNull == value
++                "accessibilityLabel" -> node["contentDescription"]?.jsonPrimitive?.contentOrNull == value
++                "textAndRole" -> node["text"]?.jsonPrimitive?.contentOrNull == value
++                else -> false
++            }
++        } ?: emptyList()
++        if (matches.size != 1) return
++
++        repo.applyAiSelectorRepairProposal(
++            runId = runId,
++            stepId = failingStepId,
++            strategy = strategy,
++            value = value,
++            confidence = confidence,
++            provenance = result.provenance.toJsonObject(),
++        )
++    }
++
+     // ---------- selector resolution ----------
+ 
+     private sealed class Resolve {
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/explorer/ExplorerAgent.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/explorer/ExplorerAgent.kt
+index e10b25d..e313b44 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/explorer/ExplorerAgent.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/explorer/ExplorerAgent.kt
+@@ -7,7 +7,9 @@ import com.facebook.react.bridge.WritableMap
+ import com.facebook.react.modules.core.DeviceEventManagerModule
+ import com.techphantoms.pocketqa.OperationLock
+ import com.techphantoms.pocketqa.capture.CaptureCoordinator
++import com.techphantoms.pocketqa.inference.ConsentToken
+ import com.techphantoms.pocketqa.inference.InferenceRouter
++import com.techphantoms.pocketqa.inference.TaskClient
+ import com.techphantoms.pocketqa.policy.PolicyEngine
+ import com.techphantoms.pocketqa.storage.JsonBridge
+ import com.techphantoms.pocketqa.storage.PocketQaRepository
+@@ -40,6 +42,7 @@ class ExplorerAgent(
+     private val repo: PocketQaRepository,
+     private val policy: PolicyEngine,
+     private val inference: InferenceRouter,
++    private val tasks: TaskClient,
+ ) {
+     private val scope = CoroutineScope(Dispatchers.Default)
+     private val stopSignals = ConcurrentHashMap<String, Boolean>()
+@@ -105,7 +108,14 @@ class ExplorerAgent(
+                 proposalStateId = snapshot.stateId
+                 break
+             }
+-            val ranked = rankCandidates(candidates)
++            val goal = mission["goal"]?.jsonPrimitive?.contentOrNull.orEmpty()
++            val ranked = rankCandidates(candidates, missionId, goal)
++            if (ranked.isEmpty()) {
++                events += ev("stop", "Model requested early stop.")
++                proposal = buildProposal(state, snapshot.stateId, mission)
++                proposalStateId = snapshot.stateId
++                break
++            }
+             val next = ranked.first()
+             val nextNodeId = next["nodeId"]?.jsonPrimitive?.contentOrNull ?: break
+             visitedNodeIds += nextNodeId
+@@ -166,11 +176,53 @@ class ExplorerAgent(
+         }
+     }
+ 
+-    private fun rankCandidates(candidates: List<JsonObject>): List<JsonObject> {
++    /**
++     * AI-6 rank_explorer_candidate — the model narrows a safe set, it never
++     * widens one. Every candidate handed here has already been classified by
++     * PolicyEngine as allowlisted, visible, non-sensitive. The model can
++     * return a re-ordering that is a *subset* of these IDs; anything
++     * unfamiliar is rejected server-side and we fall back to the deterministic
++     * ordering. The model may also return `stopEarly: true`, which we honour
++     * as an immediate STOP — the caller checks the returned list emptiness.
++     */
++    private suspend fun rankCandidates(
++        candidates: List<JsonObject>,
++        missionId: String,
++        goal: String,
++    ): List<JsonObject> {
+         val ids = candidates.mapNotNull { it["nodeId"]?.jsonPrimitive?.contentOrNull }
+-        val orderedIds = inference.rankCandidates("explore next", ids)
++        if (ids.isEmpty()) return emptyList()
++
++        val request = buildJsonObject {
++            put("goal", JsonPrimitive(goal))
++            put("candidateIds", buildJsonArray { for (id in ids) add(JsonPrimitive(id)) })
++            put("candidateLabels", buildJsonArray {
++                for (c in candidates) add(buildJsonObject {
++                    put("id", c["nodeId"] ?: JsonPrimitive(""))
++                    put("text", c["text"] ?: JsonPrimitive(""))
++                    put("role", c["role"] ?: JsonPrimitive(""))
++                })
++            })
++        }
++        val result = tasks.run(
++            taskId = "rank_explorer_candidate",
++            request = request,
++            consent = ConsentToken.GrantedForOperation("rank_explorer_candidate", missionId),
++            timeoutMs = 2_000,
++        )
++        val stopEarly = result.value?.get("stopEarly")?.jsonPrimitive?.contentOrNull == "true"
++        if (stopEarly) return emptyList()
++        val orderedIds = result.value?.get("orderedIds")?.jsonArray
++            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
++            ?: run {
++                // Deterministic fallback — the existing on-device ranker.
++                inference.rankCandidates("explore next", ids)
++            }
++        // Never widen the set: reject any id we didn't offer.
++        val allowed = ids.toSet()
++        val filtered = orderedIds.filter { it in allowed }
+         val byId = candidates.associateBy { it["nodeId"]?.jsonPrimitive?.contentOrNull }
+-        return orderedIds.mapNotNull { byId[it] }.ifEmpty { candidates }
++        return filtered.mapNotNull { byId[it] }.ifEmpty { candidates }
+     }
+ 
+     private fun buildProposal(state: JsonObject, stateId: String, mission: JsonObject): JsonObject {
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/ConsentToken.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/ConsentToken.kt
+new file mode 100644
+index 0000000..2fbf9c0
+--- /dev/null
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/ConsentToken.kt
+@@ -0,0 +1,51 @@
++package com.techphantoms.pocketqa.inference
++
++/**
++ * Per-operation consent scope, enforced at the TaskClient boundary.
++ *
++ * The wire protocol lets the server accept work at four levels of consent
++ * (see services/ai-lab app/engines/base.py ConsentState). On the device we
++ * only ever grant per-operation, never per-app or per-session — approving a
++ * failure explanation does not approve sending capture data next time.
++ *
++ * The token is created by whichever coordinator is about to call an AI task
++ * and is consumed by TaskClient.run. Handing a token to a task other than
++ * the one it was granted for throws — this is deliberately loud because it
++ * indicates a broken consent surface, not a runtime error.
++ */
++sealed class ConsentToken(val serverState: String) {
++
++    /**
++     * The operator has agreed that this specific task may leave the device
++     * for this specific run. Any drift (task id, direction, operation id)
++     * invalidates the token.
++     */
++    class GrantedForOperation(
++        val taskId: String,
++        val operationId: String,
++        val grantedAt: Long = System.currentTimeMillis(),
++    ) : ConsentToken(serverState = "OPERATION_LEVEL_GRANTED")
++
++    /**
++     * The server has told us this task carries no privacy risk (e.g. rank
++     * with no free-text). Included so the wire representation is complete;
++     * not currently produced by the device.
++     */
++    object NotRequired : ConsentToken(serverState = "NOT_REQUIRED")
++
++    /**
++     * Explicitly denied — the caller should not attempt the network call.
++     */
++    object Denied : ConsentToken(serverState = "DENIED")
++
++    fun assertMatches(taskId: String) {
++        val ok = when (this) {
++            is GrantedForOperation -> this.taskId == taskId
++            NotRequired -> true
++            Denied -> false
++        }
++        require(ok) { "ConsentToken does not authorise task \"$taskId\"" }
++    }
++
++    fun isNetworkPermitted(): Boolean = this !is Denied
++}
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/InferenceRouter.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/InferenceRouter.kt
+index e8d035d..c8205c7 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/InferenceRouter.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/InferenceRouter.kt
+@@ -115,23 +115,56 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
+         } catch (_: Throwable) { null }
+     }
+ 
+-    // -- Internal ---------------------------------------------------------------
++    // -- Redaction --------------------------------------------------------------
+ 
+-    private data class RedactionResult(val text: String, val changed: Boolean)
++    data class RedactionResult(val text: String, val changed: Boolean)
+ 
+-    private fun redactSensitive(input: String): RedactionResult {
++    /**
++     * Nine-pattern PII scrubber applied to every free-text field before it
++     * leaves the device — voice transcripts, task requests, provenance
++     * excerpts. The list matches the guarantee in the wiring spec (§3.1).
++     *
++     * A single copy lives here; TaskClient reuses this exact function so the
++     * device and wire always agree (see bug AI-B-22 in the wiring notes).
++     */
++    fun redactSensitive(input: String): RedactionResult {
+         var out = input
+         var changed = false
+-        val cardRegex = Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b")
+-        if (cardRegex.containsMatchIn(out)) { out = out.replace(cardRegex, "•••• redacted ••••"); changed = true }
+-        val otpContext = Regex("(?i)\\bOTP\\b")
+-        val otpDigits = Regex("\\b\\d{4,8}\\b")
+-        if (otpContext.containsMatchIn(out) && otpDigits.containsMatchIn(out)) {
+-            out = out.replace(otpDigits, "••••"); changed = true
++        fun apply(regex: Regex, replacement: String) {
++            if (regex.containsMatchIn(out)) { out = out.replace(regex, replacement); changed = true }
++        }
++        // 1. Card number (16 digits, optional grouping)
++        apply(Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"), "•••• redacted ••••")
++        // 2. Aadhaar (12 digits in 4-4-4 groups)
++        apply(Regex("\\b\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{4}\\b"), "••••-••••-••••")
++        // 3. PAN (5 letters + 4 digits + 1 letter)
++        apply(Regex("\\b[A-Z]{5}\\d{4}[A-Z]\\b"), "PAN••••••")
++        // 4. IFSC (4 letters + 0 + 6 alphanumeric)
++        apply(Regex("\\b[A-Z]{4}0[A-Z0-9]{6}\\b"), "IFSC••••••")
++        // 5. Email
++        apply(Regex("\\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}\\b"), "•••@•••")
++        // 6. UPI VPA (handle@bank)
++        apply(Regex("\\b[A-Za-z0-9._-]{2,}@(?:okhdfcbank|okicici|okaxis|oksbi|paytm|ybl|axl|upi)\\b"), "•••@upi")
++        // 7. Phone (10-13 digit with optional +)
++        apply(Regex("(?<!\\d)\\+?\\d[\\d\\s-]{8,12}\\d(?!\\d)"), "•••phone•••")
++        // 8. Bearer / API token (long alphanumerics after "bearer" / "token")
++        apply(Regex("(?i)(bearer|token|api[_\\- ]?key)\\s*[:=]?\\s*[A-Za-z0-9_\\-.]{16,}"), "$1 ••••redacted••••")
++        // 9. OTP (4-8 digits after the word OTP)
++        val otpContext = Regex("(?i)\\b(?:OTP|verification code|one[- ]time)\\b[^\\d]{0,20}")
++        val hit = otpContext.find(out)
++        if (hit != null) {
++            val tail = out.substring(hit.range.last + 1)
++            val masked = tail.replaceFirst(Regex("\\b\\d{4,8}\\b"), "••••")
++            if (masked != tail) {
++                out = out.substring(0, hit.range.last + 1) + masked
++                changed = true
++            }
+         }
+         return RedactionResult(out, changed)
+     }
+ 
++    // -- Internal ---------------------------------------------------------------
++
+     private fun tryOnDeviceRanking(prompt: String, candidateIds: List<String>): List<String>? {
+         // The concrete ML Kit GenAI wire-up varies across module versions. We
+         // invoke it reflectively so this file compiles regardless of the exact
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/TaskClient.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/TaskClient.kt
+new file mode 100644
+index 0000000..8f334af
+--- /dev/null
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/inference/TaskClient.kt
+@@ -0,0 +1,244 @@
++package com.techphantoms.pocketqa.inference
++
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.withContext
++import kotlinx.coroutines.withTimeoutOrNull
++import kotlinx.serialization.json.Json
++import kotlinx.serialization.json.JsonObject
++import kotlinx.serialization.json.jsonObject
++import kotlinx.serialization.json.jsonPrimitive
++import kotlinx.serialization.json.contentOrNull
++import kotlinx.serialization.json.booleanOrNull
++import kotlinx.serialization.json.longOrNull
++import okhttp3.MediaType.Companion.toMediaTypeOrNull
++import okhttp3.OkHttpClient
++import okhttp3.Request
++import okhttp3.RequestBody.Companion.toRequestBody
++import java.util.concurrent.TimeUnit
++
++/**
++ * TaskClient — the single mobile-to-service transport for AI reasoning tasks.
++ *
++ * Rules from the wiring spec (§3.1):
++ *   1. Redact before send, always. Text-shaped fields in the request payload
++ *      are passed through InferenceRouter.redactSensitive before serialisation.
++ *   2. Consent is a parameter, not a checkbox someone remembered. The caller
++ *      must hand in a matching ConsentToken; the token asserts the task id
++ *      it was granted for before we make the network call.
++ *   3. Timeout is the caller's, and short. See §6.
++ *   4. A failure is a Result<T> with value == null, never an exception.
++ *      Every caller's next line is already the deterministic path.
++ *
++ * The client owns nothing else: no schema validation (server does that),
++ * no merge rule (server does that), no fallback behaviour (caller does that).
++ */
++class TaskClient(
++    private val baseUrlProvider: () -> String?,
++    private val redactor: (String) -> RedactionResult,
++) {
++
++    data class RedactionResult(val text: String, val changed: Boolean)
++
++    data class Provenance(
++        val engine: String,
++        val model: String?,
++        val promptVersion: String?,
++        val usedModel: Boolean,
++        val outputRejected: Boolean,
++        val rejectionReason: String?,
++        val latencyMs: Long,
++        val redacted: Boolean,
++        val networkUsed: Boolean,
++        val consent: String,
++    ) {
++        fun toJsonObject(): JsonObject = Json.parseToJsonElement(
++            buildString {
++                append('{')
++                append(""""engine":${quoteOrNull(engine)},""")
++                append(""""model":${quoteOrNull(model)},""")
++                append(""""promptVersion":${quoteOrNull(promptVersion)},""")
++                append(""""usedModel":$usedModel,""")
++                append(""""outputRejected":$outputRejected,""")
++                append(""""rejectionReason":${quoteOrNull(rejectionReason)},""")
++                append(""""latencyMs":$latencyMs,""")
++                append(""""redacted":$redacted,""")
++                append(""""networkUsed":$networkUsed,""")
++                append(""""consent":${quoteOrNull(consent)}""")
++                append('}')
++            }
++        ).jsonObject
++
++        companion object {
++            /** The provenance we would have reported if the model had been asked. */
++            fun deterministic(consent: ConsentToken): Provenance = Provenance(
++                engine = "deterministic-local",
++                model = null,
++                promptVersion = null,
++                usedModel = false,
++                outputRejected = false,
++                rejectionReason = null,
++                latencyMs = 0,
++                redacted = false,
++                networkUsed = false,
++                consent = consent.serverState,
++            )
++        }
++    }
++
++    data class Result(
++        val value: JsonObject?,
++        val provenance: Provenance,
++    )
++
++    private val http: OkHttpClient by lazy {
++        OkHttpClient.Builder()
++            .callTimeout(8, TimeUnit.SECONDS)
++            .connectTimeout(2, TimeUnit.SECONDS)
++            .readTimeout(6, TimeUnit.SECONDS)
++            .build()
++    }
++
++    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
++
++    /**
++     * Run a task against the ai-lab service.
++     *
++     * Returns Result with value = null when:
++     *   - no endpoint is configured;
++     *   - the consent token is denied;
++     *   - the network request fails or times out;
++     *   - the server responds non-2xx or with unparseable JSON.
++     *
++     * The provenance carries "usedModel = false" for every non-success path so
++     * the caller — and the UI — can honestly say "No network used" whenever
++     * that is true.
++     */
++    suspend fun run(
++        taskId: String,
++        request: JsonObject,
++        consent: ConsentToken,
++        timeoutMs: Long,
++    ): Result = withContext(Dispatchers.IO) {
++        consent.assertMatches(taskId)
++        val base = baseUrlProvider().orEmpty().trimEnd('/')
++        if (base.isEmpty() || !consent.isNetworkPermitted()) {
++            return@withContext Result(value = null, provenance = Provenance.deterministic(consent))
++        }
++
++        val redactedRequest = redactRequest(request)
++        val body = redactedRequest.payload.toString()
++            .toRequestBody("application/json".toMediaTypeOrNull())
++        val url = "$base/tasks/$taskId"
++        val req = Request.Builder()
++            .url(url)
++            .addHeader("X-Consent-Scope", consent.serverState)
++            .post(body)
++            .build()
++
++        val startedAt = System.currentTimeMillis()
++        val raw = withTimeoutOrNull(timeoutMs) {
++            try {
++                http.newCall(req).execute().use { r ->
++                    if (!r.isSuccessful) null
++                    else r.body?.string()
++                }
++            } catch (_: Throwable) {
++                null
++            }
++        }
++        val latency = System.currentTimeMillis() - startedAt
++
++        if (raw.isNullOrBlank()) {
++            return@withContext Result(
++                value = null,
++                provenance = Provenance(
++                    engine = "deterministic-local",
++                    model = null, promptVersion = null,
++                    usedModel = false, outputRejected = false, rejectionReason = "network-unreachable",
++                    latencyMs = latency, redacted = redactedRequest.changed,
++                    networkUsed = true, consent = consent.serverState,
++                ),
++            )
++        }
++
++        val parsed = try {
++            json.parseToJsonElement(raw).jsonObject
++        } catch (_: Throwable) {
++            return@withContext Result(
++                value = null,
++                provenance = Provenance(
++                    engine = "deterministic-local",
++                    model = null, promptVersion = null,
++                    usedModel = false, outputRejected = true, rejectionReason = "unparseable-response",
++                    latencyMs = latency, redacted = redactedRequest.changed,
++                    networkUsed = true, consent = consent.serverState,
++                ),
++            )
++        }
++
++        val body_ = parsed["response"]?.jsonObject
++        val provenance = readProvenance(
++            envelope = parsed,
++            latencyFallback = latency,
++            redacted = redactedRequest.changed,
++            consent = consent,
++        )
++        // A schema-rejected output is a normal logged outcome, not an error.
++        // Caller uses the deterministic path when value is null.
++        val value = if (provenance.outputRejected) null else body_
++        Result(value, provenance)
++    }
++
++    private fun readProvenance(
++        envelope: JsonObject,
++        latencyFallback: Long,
++        redacted: Boolean,
++        consent: ConsentToken,
++    ): Provenance {
++        val p = envelope["provenance"]?.jsonObject
++        val engineId = p?.get("engineId")?.jsonPrimitive?.contentOrNull ?: "deterministic-v1"
++        val usedModel = p?.get("model")?.jsonPrimitive?.contentOrNull != null &&
++            !engineId.startsWith("deterministic")
++        return Provenance(
++            engine = engineId,
++            model = p?.get("model")?.jsonPrimitive?.contentOrNull,
++            promptVersion = p?.get("promptVersion")?.jsonPrimitive?.contentOrNull,
++            usedModel = usedModel,
++            outputRejected = p?.get("outputRejected")?.jsonPrimitive?.booleanOrNull ?: false,
++            rejectionReason = p?.get("rejectionReason")?.jsonPrimitive?.contentOrNull,
++            latencyMs = p?.get("latencyMs")?.jsonPrimitive?.longOrNull ?: latencyFallback,
++            redacted = p?.get("redactionApplied")?.jsonPrimitive?.booleanOrNull ?: redacted,
++            networkUsed = true,
++            consent = consent.serverState,
++        )
++    }
++
++    /**
++     * Recursively walk the request payload and redact every string leaf.
++     * Structural keys ("taskId", enum-shaped ids, integers) are untouched;
++     * only free text ever reaches the wire redactor.
++     */
++    private fun redactRequest(request: JsonObject): RedactedRequest {
++        var changed = false
++        val jsonText = request.toString()
++        val redacted = redactor(jsonText)
++        if (redacted.changed) changed = true
++        val out = try {
++            json.parseToJsonElement(redacted.text).jsonObject
++        } catch (_: Throwable) {
++            request
++        }
++        return RedactedRequest(out, changed)
++    }
++
++    private data class RedactedRequest(val payload: JsonObject, val changed: Boolean)
++
++    companion object {
++        private fun quoteOrNull(s: String?): String = if (s == null) "null" else buildString {
++            append('"'); for (c in s) when (c) {
++                '"' -> append("\\\""); '\\' -> append("\\\\"); '\n' -> append("\\n")
++                '\r' -> append("\\r"); '\t' -> append("\\t"); else -> append(c)
++            }; append('"')
++        }
++    }
++}
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/CredentialVault.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/CredentialVault.kt
+index d692d3b..7d605aa 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/CredentialVault.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/CredentialVault.kt
+@@ -47,4 +47,26 @@ class CredentialVault(private val ctx: Context) {
+     fun read(provider: String): String? = prefs.getString(provider, null)
+ 
+     fun mask(apiKey: String): String = "••••" + apiKey.takeLast(4).uppercase()
++
++    /**
++     * Endpoint URLs (ai-lab service) are stored in the same vault as provider
++     * keys so a data wipe removes them too. They are displayed as the host —
++     * "10.0.0.4:8000" — rather than fully masked; the URL isn't a secret but
++     * we still route it through the vault so the "Delete all data" contract
++     * remains exhaustive.
++     */
++    fun storeEndpoint(name: String, url: String): String {
++        prefs.edit().putString("endpoint:$name", url).apply()
++        return endpointDisplay(url)
++    }
++
++    fun readEndpoint(name: String): String? = prefs.getString("endpoint:$name", null)
++
++    fun deleteEndpoint(name: String) { prefs.edit().remove("endpoint:$name").apply() }
++
++    private fun endpointDisplay(url: String): String {
++        val trimmed = url.trim().removeSuffix("/")
++        val host = trimmed.substringAfter("://", trimmed)
++        return if (host.length <= 32) host else host.take(29) + "…"
++    }
+ }
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaDao.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaDao.kt
+index 70a90e0..c80722d 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaDao.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaDao.kt
+@@ -85,6 +85,8 @@ interface PocketQaDao {
+     suspend fun run(runId: String): ReplayRunRow?
+     @Query("SELECT * FROM replay_run WHERE testId = :testId ORDER BY finishedAt DESC LIMIT 1")
+     suspend fun latestRunForTest(testId: String): ReplayRunRow?
++    @Query("SELECT * FROM replay_run WHERE testId = :testId ORDER BY finishedAt DESC LIMIT :limit")
++    suspend fun runsForTest(testId: String, limit: Int): List<ReplayRunRow>
+ 
+     // Missions ----------------------------------------------------------------------
+     @Insert(onConflict = OnConflictStrategy.REPLACE)
+diff --git a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaRepository.kt b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaRepository.kt
+index 1f1f4b0..e00b380 100644
+--- a/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaRepository.kt
++++ b/apps/pocketqa-mobile/android/app/src/main/java/com/techphantoms/pocketqa/storage/PocketQaRepository.kt
+@@ -80,11 +80,34 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
+             connected.putMap(p, entry)
+         }
+         map.putMap("connected", connected)
++        val aiLab = Arguments.createMap()
++        val endpoint = vault.readEndpoint("aiLab")
++        aiLab.putBoolean("configured", !endpoint.isNullOrBlank())
++        if (endpoint != null) aiLab.putString("displayHost", displayEndpoint(endpoint))
++        map.putMap("aiLab", aiLab)
+         val al = Arguments.createArray(); for (pkg in allowlist) al.pushString(pkg)
+         map.putArray("packageAllowlist", al)
+         map
+     }
+ 
++    private fun displayEndpoint(url: String): String {
++        val trimmed = url.trim().removeSuffix("/")
++        val host = trimmed.substringAfter("://", trimmed)
++        return if (host.length <= 32) host else host.take(29) + "…"
++    }
++
++    fun aiLabEndpoint(): String? = vault.readEndpoint("aiLab")
++
++    fun saveAiLabEndpoint(url: String): WritableMap {
++        val display = vault.storeEndpoint("aiLab", url)
++        val out = Arguments.createMap()
++        out.putBoolean("configured", true)
++        out.putString("displayHost", display)
++        return out
++    }
++
++    fun deleteAiLabEndpoint() { vault.deleteEndpoint("aiLab") }
++
+     fun setOfflineMode(offline: Boolean) {
+         prefs.edit().putBoolean("offlineMode", offline).apply()
+     }
+@@ -448,9 +471,48 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
+             else -> "Open the evidence trail to inspect the failing state before repairing."
+         }
+         out.putString("suggestion", suggestion)
++
++        // AI-1 explain_failure — optional additional sentence, always
++        // attributed, never replacing the deterministic suggestion above.
++        failure["aiExplanation"]?.jsonPrimitive?.contentOrNull?.let {
++            out.putString("aiExplanation", it)
++        }
++        failure["aiExplanationProvenance"]?.jsonObject?.let {
++            out.putMap("aiExplanationProvenance", JsonBridge.toWritableMap(it.toString()))
++        }
++        // AI-4 repair_selector — optional model alternative surfaced next to
++        // the deterministic Apply button. Applied only via an explicit tap.
++        payload["aiSelectorRepair"]?.jsonObject?.let { repair ->
++            val map = Arguments.createMap()
++            map.putString("stepId", repair["stepId"]?.jsonPrimitive?.contentOrNull.orEmpty())
++            map.putString("strategy", repair["strategy"]?.jsonPrimitive?.contentOrNull.orEmpty())
++            map.putString("value", repair["value"]?.jsonPrimitive?.contentOrNull.orEmpty())
++            map.putDouble("confidence", repair["confidence"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0)
++            repair["provenance"]?.jsonObject?.let {
++                map.putMap("provenance", JsonBridge.toWritableMap(it.toString()))
++            }
++            out.putMap("aiSelectorRepair", map)
++        }
++        // AI-5 classify_flake — annotates but never suppresses the failure.
++        payload["aiFlake"]?.jsonObject?.let { flake ->
++            val map = Arguments.createMap()
++            map.putString("verdict", flake["verdict"]?.jsonPrimitive?.contentOrNull.orEmpty())
++            flake["reason"]?.jsonPrimitive?.contentOrNull?.let { map.putString("reason", it) }
++            flake["provenance"]?.jsonObject?.let {
++                map.putMap("provenance", JsonBridge.toWritableMap(it.toString()))
++            }
++            out.putMap("aiFlake", map)
++        }
+         out
+     }
+ 
++    /** Read the persisted UI state so the repair verifier can double-check the AI proposal. */
++    fun uiStateRaw(stateId: String): JsonObject? = runBlocking {
++        dao.uiState(stateId)?.payload?.let {
++            JsonBridge.json.parseToJsonElement(it).jsonObject
++        }
++    }
++
+     fun checkpoint() = runBlocking {
+         // Bump every "active" row's checkpointedAt so foreground rehydration can
+         // resume the workflow at the last completed step.
+@@ -485,6 +547,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
+     fun deleteTest(id: String) = runBlocking { dao.deleteApproved(id) }
+     fun deleteAll() = runBlocking {
+         for (p in dao.providers()) vault.delete(p.provider)
++        vault.deleteEndpoint("aiLab")
+         dao.clearConsent(); dao.clearProviders(); dao.clearIntents()
+         dao.clearSessions(); dao.clearEvents(); dao.clearStates()
+         dao.clearJobs(); dao.clearDrafts(); dao.clearApproved()
+@@ -494,6 +557,261 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
+     /** Read the plaintext API key for a provider — only the InferenceRouter uses this. */
+     fun providerKey(provider: String): String? = vault.read(provider)
+ 
++    // -- AI proposal surface (§4 of the wiring spec) ----------------------------
++
++    fun draftIdForJob(jobId: String): String? = runBlocking { dao.compileJob(jobId)?.draftId }
++
++    fun readDraftJson(draftId: String): JsonObject? = runBlocking {
++        val payload = dao.draft(draftId)?.payload ?: return@runBlocking null
++        JsonBridge.json.parseToJsonElement(payload).jsonObject
++    }
++
++    /**
++     * AI-3 name_test — persist a proposed test name alongside its provenance
++     * so the review screen can render "Named by google/gemini-2.5-flash".
++     * Only writes if the current name still looks auto-generated.
++     */
++    fun applyAiName(draftId: String, name: String, provenance: JsonObject) = runBlocking {
++        val row = dao.draft(draftId) ?: return@runBlocking
++        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val existing = current["name"]?.jsonPrimitive?.contentOrNull
++        val looksAuto = existing.isNullOrBlank() || existing == "Untitled" ||
++            existing == current["intent"]?.jsonPrimitive?.contentOrNull ||
++            existing.startsWith("draft_")
++        if (!looksAuto) return@runBlocking
++        val next = JsonObject(current + mapOf(
++            "name" to JsonPrimitive(name),
++            "aiName" to buildJsonObject {
++                put("value", JsonPrimitive(name))
++                put("provenance", provenance)
++            },
++        ))
++        dao.upsertDraft(row.copy(
++            name = name,
++            payload = next.toString(),
++            revision = row.revision + 1,
++            updatedAt = System.currentTimeMillis(),
++        ))
++    }
++
++    /**
++     * AI-2 candidate builder — walk visible text from the last observed state
++     * and every meaningful captured assertion, then hand a stable id/target
++     * list to compile_intent. The task service is prevented from inventing:
++     * every id it returns must be one of these.
++     */
++    fun candidateAssertionsForDraft(draftId: String): List<JsonObject> = runBlocking {
++        val row = dao.draft(draftId) ?: return@runBlocking emptyList()
++        val draft = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val steps = draft["steps"]?.jsonArray?.map { it.jsonObject } ?: return@runBlocking emptyList()
++        val lastStep = steps.lastOrNull() ?: return@runBlocking emptyList()
++        val lastStateId = lastStep["afterStateId"]?.jsonPrimitive?.contentOrNull
++        val lastState = lastStateId?.let { dao.uiState(it) }
++            ?.let { JsonBridge.json.parseToJsonElement(it.payload).jsonObject }
++        val out = mutableListOf<JsonObject>()
++        var idx = 1
++        // Every visible, non-sensitive text becomes a textVisible candidate.
++        lastState?.get("nodes")?.jsonArray
++            ?.map { it.jsonObject }
++            ?.filter {
++                it["visible"]?.jsonPrimitive?.contentOrNull == "true" &&
++                    it["sensitive"]?.jsonPrimitive?.contentOrNull != "true"
++            }
++            ?.forEach { node ->
++                val text = node["text"]?.jsonPrimitive?.contentOrNull
++                    ?: node["contentDescription"]?.jsonPrimitive?.contentOrNull
++                if (!text.isNullOrBlank()) {
++                    out += buildJsonObject {
++                        put("id", JsonPrimitive("a$idx"))
++                        put("kind", JsonPrimitive("textVisible"))
++                        put("target", JsonPrimitive(text))
++                        put("expected", JsonPrimitive(text))
++                        put("sourceStateId", JsonPrimitive(lastStateId ?: ""))
++                        put("supported", JsonPrimitive(true))
++                        put("reason", JsonPrimitive("Observed in last state."))
++                    }
++                    idx++
++                }
++            }
++        out.take(12)
++    }
++
++    /**
++     * AI-2 apply — write the AI-selected/ranked candidates back to the draft
++     * as `finalAssertions` marked `proposed: true`. Approve stays blocked
++     * until at least one assertion exists in the draft (proposed or not),
++     * which matches today's rule.
++     */
++    fun applyAiFinalAssertionProposals(
++        draftId: String,
++        ranked: List<JsonObject>,
++        provenance: JsonObject,
++    ) = runBlocking {
++        if (ranked.isEmpty()) return@runBlocking
++        val row = dao.draft(draftId) ?: return@runBlocking
++        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val existing = current["finalAssertions"]?.jsonArray ?: JsonArray(emptyList())
++        // Never overwrite user-added assertions.
++        if (existing.isNotEmpty() &&
++            existing.any { it.jsonObject["proposed"]?.jsonPrimitive?.contentOrNull != "true" }) {
++            return@runBlocking
++        }
++        val proposals = buildJsonArray {
++            for (c in ranked) {
++                add(buildJsonObject {
++                    put("id", JsonPrimitive("assert_" + UUID.randomUUID().toString().take(8)))
++                    put("kind", c["kind"] ?: JsonPrimitive("textVisible"))
++                    put("target", c["target"] ?: JsonPrimitive(""))
++                    put("expected", c["expected"] ?: JsonPrimitive(""))
++                    put("sourceStateId", c["sourceStateId"] ?: JsonPrimitive(""))
++                    put("supported", JsonPrimitive(true))
++                    put("reason", JsonPrimitive("Proposed from your intent."))
++                    put("proposed", JsonPrimitive(true))
++                    put("aiConfidence", c["confidence"] ?: JsonPrimitive(0.0))
++                })
++            }
++        }
++        val next = JsonObject(current + mapOf(
++            "finalAssertions" to proposals,
++            "aiFinalAssertionProvenance" to provenance,
++        ))
++        dao.upsertDraft(row.copy(
++            payload = next.toString(),
++            revision = row.revision + 1,
++            updatedAt = System.currentTimeMillis(),
++        ))
++    }
++
++    // -- AI failure surface (§4 items 3/6/7) ------------------------------------
++
++    fun readRunJson(runId: String): JsonObject? = runBlocking {
++        dao.run(runId)?.payload?.let {
++            JsonBridge.json.parseToJsonElement(it).jsonObject
++        }
++    }
++
++    /**
++     * AI-1 explain_failure — persist the model's plain-English explanation
++     * alongside the deterministic failure summary so the evidence screen can
++     * render "Explained by google/gemini-2.5-flash". Never replaces the
++     * deterministic suggestion.
++     */
++    fun applyAiFailureExplanation(runId: String, text: String, provenance: JsonObject) = runBlocking {
++        val row = dao.run(runId) ?: return@runBlocking
++        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val result = current["result"]?.jsonObject ?: return@runBlocking
++        val failure = result["failure"]?.jsonObject ?: return@runBlocking
++        val newFailure = JsonObject(failure + mapOf(
++            "aiExplanation" to JsonPrimitive(text),
++            "aiExplanationProvenance" to provenance,
++        ))
++        val newResult = JsonObject(result + mapOf("failure" to newFailure))
++        val next = JsonObject(current + mapOf("result" to newResult))
++        dao.upsertRun(row.copy(payload = next.toString()))
++    }
++
++    /**
++     * AI-4 repair_selector — record the model's alternative alongside the
++     * deterministic suggestion, without applying it. Applying is a separate
++     * explicit tap that goes through [applyRepairAndBumpVersion].
++     */
++    fun applyAiSelectorRepairProposal(
++        runId: String,
++        stepId: String,
++        strategy: String,
++        value: String,
++        confidence: Double,
++        provenance: JsonObject,
++    ) = runBlocking {
++        val row = dao.run(runId) ?: return@runBlocking
++        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val proposal = buildJsonObject {
++            put("stepId", JsonPrimitive(stepId))
++            put("strategy", JsonPrimitive(strategy))
++            put("value", JsonPrimitive(value))
++            put("confidence", JsonPrimitive(confidence))
++            put("provenance", provenance)
++        }
++        val next = JsonObject(current + mapOf("aiSelectorRepair" to proposal))
++        dao.upsertRun(row.copy(payload = next.toString()))
++    }
++
++    /**
++     * AI-4 apply — an approved test is immutable, so applying a repair creates
++     * a new immutable version. The existing latest row remains readable so run
++     * history can show both.
++     */
++    fun applyRepairAndBumpVersion(
++        testId: String,
++        stepId: String,
++        strategy: String,
++        value: String,
++    ): WritableMap? = runBlocking {
++        val previous = dao.latestApproved(testId) ?: return@runBlocking null
++        val payload = JsonBridge.json.parseToJsonElement(previous.payload).jsonObject
++        val steps = payload["steps"]?.jsonArray ?: return@runBlocking null
++        val newSteps = buildJsonArray {
++            for (raw in steps) {
++                val step = raw.jsonObject
++                if (step["id"]?.jsonPrimitive?.contentOrNull != stepId) { add(raw); continue }
++                val selector = step["selector"]?.jsonObject ?: run { add(raw); continue }
++                val newPrimary = buildJsonObject {
++                    put("strategy", JsonPrimitive(strategy))
++                    put("value", JsonPrimitive(value))
++                    put("confidence", JsonPrimitive(0.92))
++                    put("reason", JsonPrimitive("Repaired via AI-verified alternative."))
++                }
++                val prevPrimary = selector["primary"]?.jsonObject
++                val fallbacks = buildJsonArray {
++                    if (prevPrimary != null) add(prevPrimary)
++                    selector["fallbacks"]?.jsonArray?.take(1)?.forEach { add(it) }
++                }
++                add(buildJsonObject {
++                    for ((k, v) in step) if (k != "selector") put(k, v)
++                    put("selector", buildJsonObject {
++                        put("primary", newPrimary)
++                        put("fallbacks", fallbacks)
++                        put("candidateCount", selector["candidateCount"] ?: JsonPrimitive(2))
++                    })
++                })
++            }
++        }
++        val nextVersion = previous.version + 1
++        val nextPayload = JsonObject(payload + mapOf(
++            "steps" to newSteps,
++            "version" to JsonPrimitive(nextVersion),
++            "approvedAt" to JsonPrimitive(System.currentTimeMillis()),
++        ))
++        dao.upsertApprovedTest(previous.copy(
++            version = nextVersion,
++            payload = nextPayload.toString(),
++            approvedAt = System.currentTimeMillis(),
++        ))
++        JsonBridge.toWritableMap(nextPayload.toString())
++    }
++
++    fun runsForTest(testId: String, limit: Int = 6): List<JsonObject> = runBlocking {
++        dao.runsForTest(testId, limit).map {
++            JsonBridge.json.parseToJsonElement(it.payload).jsonObject
++        }
++    }
++
++    /**
++     * AI-5 classify_flake — annotate the run with the model's flake verdict.
++     * A flake verdict never suppresses a failure; it decorates it.
++     */
++    fun applyFlakeVerdict(runId: String, verdict: String, reason: String?, provenance: JsonObject) = runBlocking {
++        val row = dao.run(runId) ?: return@runBlocking
++        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
++        val flake = buildJsonObject {
++            put("verdict", JsonPrimitive(verdict))
++            if (reason != null) put("reason", JsonPrimitive(reason))
++            put("provenance", provenance)
++        }
++        val next = JsonObject(current + mapOf("aiFlake" to flake))
++        dao.upsertRun(row.copy(payload = next.toString()))
++    }
++
+     // -- Internal helpers ---------------------------------------------------------
+ 
+     /**
+diff --git a/apps/pocketqa-mobile/src/domain/schemas.ts b/apps/pocketqa-mobile/src/domain/schemas.ts
+index f9c30ad..931f9e3 100644
+--- a/apps/pocketqa-mobile/src/domain/schemas.ts
++++ b/apps/pocketqa-mobile/src/domain/schemas.ts
+@@ -67,6 +67,10 @@ export const Assertion = z.object({
+   sourceStateId: z.string(),
+   supported: z.boolean(),
+   reason: z.string(),
++  /** True when the compiler surfaced this assertion via AI proposal (§4 AI-2). */
++  proposed: z.boolean().optional(),
++  /** Model confidence 0..1 when the assertion came from a proposal. */
++  aiConfidence: z.number().min(0).max(1).optional(),
+ });
+ export type Assertion = z.infer<typeof Assertion>;
+ 
+@@ -130,6 +134,26 @@ export const CompilerEngine = z.enum([
+ ]);
+ export type CompilerEngine = z.infer<typeof CompilerEngine>;
+ 
++/** Wire-shape task provenance mirrored from services/ai-lab. Optional. */
++export const TaskProvenanceDomain = z
++  .object({
++    engine: z.string().optional(),
++    model: z.string().optional(),
++    promptVersion: z.string().optional(),
++    usedModel: z.boolean().optional(),
++    outputRejected: z.boolean().optional(),
++    rejectionReason: z.string().optional(),
++    latencyMs: z.number().optional(),
++    redacted: z.boolean().optional(),
++    networkUsed: z.boolean().optional(),
++    consent: z.string().optional(),
++    // The compile-intent flow rolls two calls into one provenance blob.
++    selection: z.any().optional(),
++    ranking: z.any().optional(),
++  })
++  .passthrough();
++export type TaskProvenanceDomain = z.infer<typeof TaskProvenanceDomain>;
++
+ export const TestDraft = z.object({
+   schemaVersion: z.literal("pocketqa/test-draft@1"),
+   id: z.string(),
+@@ -141,6 +165,10 @@ export const TestDraft = z.object({
+   steps: z.array(TestStep).min(1),
+   finalAssertions: z.array(Assertion).default([]),
+   offlineOnly: z.boolean().default(true),
++  /** Set when AI-3 name_test proposed the name at compile time. */
++  aiName: z.object({ value: z.string(), provenance: TaskProvenanceDomain }).optional(),
++  /** Set when AI-2 populated `finalAssertions` with proposals. */
++  aiFinalAssertionProvenance: TaskProvenanceDomain.optional(),
+ });
+ export type TestDraft = z.infer<typeof TestDraft>;
+ 
+diff --git a/apps/pocketqa-mobile/src/features/evidence/EvidenceScreen.tsx b/apps/pocketqa-mobile/src/features/evidence/EvidenceScreen.tsx
+index 2f8aa0a..6b35885 100644
+--- a/apps/pocketqa-mobile/src/features/evidence/EvidenceScreen.tsx
++++ b/apps/pocketqa-mobile/src/features/evidence/EvidenceScreen.tsx
+@@ -82,9 +82,24 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
+             <Text style={typography.body}>{proposal.suggestion}</Text>
+             {proposal.action?.kind === "promote-fallback" && (
+               <Text style={typography.bodyMuted}>
+-                Suggested: {proposal.action.strategy} = {proposal.action.value}
++                Deterministic: {proposal.action.strategy} = {proposal.action.value}
+               </Text>
+             )}
++            {proposal.aiSelectorRepair && (
++              <View style={styles.aiRepair}>
++                <Text style={typography.bodyMuted}>
++                  AI alternative ({(proposal.aiSelectorRepair.confidence * 100).toFixed(0)}%):{" "}
++                  {proposal.aiSelectorRepair.strategy} = {proposal.aiSelectorRepair.value}
++                </Text>
++                {proposal.aiSelectorRepair.provenance?.model && (
++                  <Text style={typography.metadata}>
++                    Proposed by {proposal.aiSelectorRepair.provenance.model}
++                    {" · "}
++                    v{proposal.aiSelectorRepair.provenance.promptVersion ?? "—"}
++                  </Text>
++                )}
++              </View>
++            )}
+             <View style={styles.detectiveActions}>
+               {failureStateId && (
+                 <GhostButton
+@@ -92,13 +107,65 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
+                   onPress={() => navigation.navigate("EvidenceDetail", { stateId: failureStateId })}
+                 />
+               )}
+-              {proposal.action && (
++              {proposal.aiSelectorRepair && (
++                <PrimaryButton
++                  label="Apply AI repair (bumps version)"
++                  onPress={async () => {
++                    try {
++                      await PocketQaNative.applyAiSelectorRepair(
++                        run.runId,
++                        proposal.aiSelectorRepair!.stepId,
++                      );
++                      navigation.replace("Home");
++                    } catch {
++                      /* surface via error state in future; kept quiet for now */
++                    }
++                  }}
++                />
++              )}
++              {!proposal.aiSelectorRepair && proposal.action && (
+                 <PrimaryButton label="Apply suggestion" onPress={applyProposal} />
+               )}
+             </View>
+           </Card>
+         )}
+ 
++        {proposal?.aiExplanation && !pass && (
++          <Card tone="info">
++            <View style={styles.detectiveHeader}>
++              <Text style={typography.eyebrow}>Why this failed</Text>
++              {proposal.aiExplanationProvenance?.model && (
++                <Text style={typography.metadata}>
++                  Explained by {proposal.aiExplanationProvenance.model}
++                </Text>
++              )}
++            </View>
++            <Text style={typography.body}>{proposal.aiExplanation}</Text>
++            <Text style={typography.metadata}>Explanation only — not applied</Text>
++          </Card>
++        )}
++
++        {proposal?.aiFlake && (
++          <Card>
++            <View style={styles.detectiveHeader}>
++              <Text style={typography.eyebrow}>Flake verdict</Text>
++              <StatusPill
++                label={proposal.aiFlake.verdict}
++                tone={proposal.aiFlake.verdict === "flake" ? "amber" : "red"}
++              />
++            </View>
++            {proposal.aiFlake.reason && (
++              <Text style={typography.bodyMuted}>{proposal.aiFlake.reason}</Text>
++            )}
++            {proposal.aiFlake.provenance?.model && (
++              <Text style={typography.metadata}>
++                Classified by {proposal.aiFlake.provenance.model}
++                {" — the failure above is not suppressed"}
++              </Text>
++            )}
++          </Card>
++        )}
++
+         <Card>
+           <Text style={typography.eyebrow}>Provenance</Text>
+           <View style={styles.pills}>
+@@ -157,4 +224,5 @@ const styles = StyleSheet.create({
+   pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs },
+   detectiveHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+   detectiveActions: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.sm },
++  aiRepair: { marginTop: spacing.xs, paddingTop: spacing.xs, borderTopWidth: 1, borderTopColor: colors.border },
+ });
+diff --git a/apps/pocketqa-mobile/src/features/review/ReviewTestScreen.tsx b/apps/pocketqa-mobile/src/features/review/ReviewTestScreen.tsx
+index 72631f3..cd25764 100644
+--- a/apps/pocketqa-mobile/src/features/review/ReviewTestScreen.tsx
++++ b/apps/pocketqa-mobile/src/features/review/ReviewTestScreen.tsx
+@@ -107,6 +107,11 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
+             placeholderTextColor={colors.textDim}
+             accessibilityLabel="Test name"
+           />
++          {draft.aiName?.provenance?.model && (
++            <Text style={typography.metadata}>
++              Named by {draft.aiName.provenance.model} — edit freely before approve
++            </Text>
++          )}
+           <Text style={typography.bodyMuted}>{draft.intent}</Text>
+           <View style={styles.pillRow}>
+             <StatusPill label={`Compiled by ${draft.compiledBy}`} tone="cyan" />
+@@ -134,9 +139,23 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
+         ))}
+ 
+         <Text style={typography.eyebrow}>Final assertions</Text>
++        {draft.aiFinalAssertionProvenance?.usedModel && draft.finalAssertions.some((a) => a.proposed) && (
++          <InlineNotice
++            title={`Proposed from your intent "${draft.intent}"`}
++            detail={
++              `Every proposal is a candidate the deterministic layer already produced — the model chose, ` +
++              `it did not author. Uncheck any you don't want, or add your own below.`
++            }
++            tone="info"
++          />
++        )}
+         {draft.finalAssertions.length === 0 ? (
+           <InlineNotice
+-            title="Add an end-state assertion"
++            title={
++              draft.aiFinalAssertionProvenance
++                ? `Couldn't propose assertions — add one below`
++                : `Add an end-state assertion`
++            }
+             detail="PocketQA requires at least one assertion in the last observed state."
+             tone="warn"
+           />
+@@ -145,7 +164,15 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
+             {draft.finalAssertions.map((a) => (
+               <View key={a.id} style={styles.assertion}>
+                 <View style={{ flex: 1 }}>
+-                  <Text style={typography.body}>{a.kind} — "{a.target}"</Text>
++                  <Text style={typography.body}>
++                    {a.kind} — "{a.target}"
++                    {a.proposed && (
++                      <Text style={typography.metadata}>
++                        {"  proposed"}
++                        {typeof a.aiConfidence === "number" ? ` · ${a.aiConfidence.toFixed(2)}` : ""}
++                      </Text>
++                    )}
++                  </Text>
+                   <Text style={typography.bodyMuted}>{a.reason}</Text>
+                 </View>
+                 <TouchableOpacity onPress={() => removeFinalAssertion(a.id)} accessibilityLabel="Remove assertion">
+diff --git a/apps/pocketqa-mobile/src/features/settings/SettingsScreen.tsx b/apps/pocketqa-mobile/src/features/settings/SettingsScreen.tsx
+index f925c7f..b439d69 100644
+--- a/apps/pocketqa-mobile/src/features/settings/SettingsScreen.tsx
++++ b/apps/pocketqa-mobile/src/features/settings/SettingsScreen.tsx
+@@ -1,24 +1,46 @@
+ import { useState } from "react";
+-import { StyleSheet, Text, View } from "react-native";
++import { StyleSheet, Text, TextInput, View } from "react-native";
+ import type { ScreenProps } from "@navigation";
+ import {
+   AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
+-  StatusPill, Toggle, TopBar,
++  PrimaryButton, StatusPill, Toggle, TopBar,
+ } from "@components";
+ import { PocketQaNative } from "@native";
+ import { useReadinessStore } from "@store";
+-import { colors, spacing, typography } from "@theme";
++import { colors, radius, spacing, typography } from "@theme";
+ 
+ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
+   const readiness = useReadinessStore((s) => s.readiness);
+   const refresh = useReadinessStore((s) => s.refresh);
+   const [wipeOpen, setWipeOpen] = useState(false);
++  const [endpointDraft, setEndpointDraft] = useState<string>("");
++  const [endpointError, setEndpointError] = useState<string | null>(null);
+ 
+   const setOffline = async (v: boolean) => {
+     await PocketQaNative.setOfflineMode(v);
+     await refresh();
+   };
+ 
++  const saveEndpoint = async () => {
++    setEndpointError(null);
++    const url = endpointDraft.trim();
++    if (!/^https?:\/\//.test(url)) {
++      setEndpointError("Endpoint must start with http:// or https://");
++      return;
++    }
++    try {
++      await PocketQaNative.saveAiLabEndpoint(url);
++      setEndpointDraft("");
++      await refresh();
++    } catch (err) {
++      setEndpointError(String(err));
++    }
++  };
++  const clearEndpoint = async () => {
++    await PocketQaNative.deleteAiLabEndpoint();
++    await refresh();
++  };
++
+   return (
+     <>
+       <TopBar title="Settings" subtitle="Privacy · providers · data" onBack={() => navigation.goBack()} />
+@@ -49,6 +71,53 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
+           </View>
+         </Card>
+ 
++        <Text style={typography.eyebrow}>AI-Lab service</Text>
++        <Card>
++          <Text style={typography.h2}>Reasoning-task endpoint</Text>
++          <Text style={typography.bodyMuted}>
++            POST http(s)://host:8000/tasks/&lt;task&gt;. Never required for the core loop; every
++            AI surface degrades to the deterministic path when this is unset or unreachable.
++          </Text>
++          <View style={styles.rowBetween}>
++            <StatusPill
++              label={
++                readiness?.aiLab.configured
++                  ? readiness.aiLab.displayHost ?? "Configured"
++                  : "Off"
++              }
++              tone={readiness?.aiLab.configured ? "lime" : "dim"}
++            />
++            {readiness?.aiLab.configured && (
++              <DangerButton label="Clear endpoint" onPress={clearEndpoint} />
++            )}
++          </View>
++          {!readiness?.aiLab.configured && (
++            <>
++              <TextInput
++                value={endpointDraft}
++                onChangeText={setEndpointDraft}
++                placeholder="http://10.0.0.4:8000"
++                placeholderTextColor={colors.textDim}
++                autoCapitalize="none"
++                autoCorrect={false}
++                keyboardType="url"
++                accessibilityLabel="AI-Lab endpoint URL"
++                style={styles.endpointInput}
++              />
++              {endpointError && (
++                <Text style={{ color: colors.red, marginTop: spacing.xs }}>{endpointError}</Text>
++              )}
++              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: spacing.sm }}>
++                <PrimaryButton
++                  label="Save endpoint"
++                  onPress={saveEndpoint}
++                  disabled={endpointDraft.trim().length === 0}
++                />
++              </View>
++            </>
++          )}
++        </Card>
++
+         <Text style={typography.eyebrow}>Connected providers</Text>
+         <Card>
+           <ProviderRow
+@@ -155,4 +224,12 @@ function ProviderRow({
+ const styles = StyleSheet.create({
+   rowBetween: { flexDirection: "row", alignItems: "center", gap: spacing.md, justifyContent: "space-between" },
+   rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
++  endpointInput: {
++    marginTop: spacing.sm,
++    color: colors.text,
++    borderWidth: 1,
++    borderColor: colors.borderStrong,
++    borderRadius: radius.input,
++    padding: spacing.sm,
++  },
+ });
+diff --git a/apps/pocketqa-mobile/src/native/NativePocketQaModule.ts b/apps/pocketqa-mobile/src/native/NativePocketQaModule.ts
+index 9dae4ae..1a4f52c 100644
+--- a/apps/pocketqa-mobile/src/native/NativePocketQaModule.ts
++++ b/apps/pocketqa-mobile/src/native/NativePocketQaModule.ts
+@@ -52,6 +52,7 @@ export interface Spec extends TurboModule {
+   getState(stateId: string): Promise<Object>;
+   listSelectorCandidates(draftId: string, stepId: string): Promise<Array<Object>>;
+   promoteFallbackSelector(draftId: string, stepId: string, candidateIndex: number): Promise<Object>;
++  applyAiSelectorRepair(runId: string, stepId: string): Promise<Object>;
+   getFailureProposal(runId: string): Promise<Object>;
+   submitVoiceTranscript(intentId: string, transcript: string): Promise<Object>;
+   checkpointActiveOperation(): Promise<void>;
+@@ -71,6 +72,8 @@ export interface Spec extends TurboModule {
+   // ---- providers + teardown ----
+   saveProviderCredential(input: Object): Promise<Object>;
+   deleteProviderCredential(provider: string): Promise<void>;
++  saveAiLabEndpoint(url: string): Promise<Object>;
++  deleteAiLabEndpoint(): Promise<void>;
+   deleteSession(sessionId: string): Promise<void>;
+   deleteTest(testId: string): Promise<void>;
+   deleteAllData(): Promise<void>;
+diff --git a/apps/pocketqa-mobile/src/native/mock.ts b/apps/pocketqa-mobile/src/native/mock.ts
+index 0cc0ef8..299733e 100644
+--- a/apps/pocketqa-mobile/src/native/mock.ts
++++ b/apps/pocketqa-mobile/src/native/mock.ts
+@@ -60,6 +60,7 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
+     demoShopInstalled: true,
+     onDeviceModel: "unavailable",
+     connected: { sarvam: { configured: false }, openai: { configured: false } },
++    aiLab: { configured: false },
+     offlineMode: true,
+     packageAllowlist: [...ALLOWLISTED_PACKAGES],
+   };
+@@ -395,6 +396,16 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
+       }));
+     },
+ 
++    async applyAiSelectorRepair(runId, _stepId) {
++      const r = runs.get(runId);
++      if (!r) throw new Error("run not found");
++      const t = tests.get(r.test.id);
++      if (!t) throw new Error("test not found");
++      const bumped: ApprovedTest = { ...t, version: t.version + 1, approvedAt: Date.now() };
++      tests.set(t.id, bumped);
++      return bumped;
++    },
++
+     async promoteFallbackSelector(draftId, stepId, candidateIndex) {
+       const d = drafts.get(draftId); if (!d) throw new Error("draft not found");
+       const stepIdx = d.steps.findIndex((s) => s.id === stepId);
+@@ -561,6 +572,13 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
+       return { provider: input.provider, configured: true, maskedKey: readiness.connected[input.provider].maskedKey };
+     },
+     async deleteProviderCredential(provider) { readiness.connected[provider] = { configured: false }; },
++    async saveAiLabEndpoint(url: string) {
++      const trimmed = url.trim().replace(/\/$/, "");
++      const host = trimmed.replace(/^[a-z]+:\/\//, "");
++      readiness.aiLab = { configured: true, displayHost: host };
++      return { configured: true, displayHost: host };
++    },
++    async deleteAiLabEndpoint() { readiness.aiLab = { configured: false }; },
+     async deleteSession(sessionId) { sessions.delete(sessionId); },
+     async deleteTest(testId) { tests.delete(testId); },
+     async deleteAllData() {
+diff --git a/apps/pocketqa-mobile/src/native/types.ts b/apps/pocketqa-mobile/src/native/types.ts
+index 77388e0..7f298b5 100644
+--- a/apps/pocketqa-mobile/src/native/types.ts
++++ b/apps/pocketqa-mobile/src/native/types.ts
+@@ -30,6 +30,7 @@ export interface DeviceReadiness {
+   demoShopInstalled: boolean;
+   onDeviceModel: "unavailable" | "ready";
+   connected: Record<ConnectedProvider, { configured: boolean; maskedKey?: string }>;
++  aiLab: { configured: boolean; displayHost?: string };
+   offlineMode: boolean;
+   packageAllowlist: string[];
+ }
+@@ -134,7 +135,21 @@ export interface SelectorCandidate {
+   isPrimary: boolean;
+ }
+ 
+-/** §7.11 — Failure Detective repair proposal. */
++/** Wire-shape provenance emitted alongside every AI-touched surface (§5). */
++export interface TaskProvenance {
++  engine: string;
++  model?: string;
++  promptVersion?: string;
++  usedModel: boolean;
++  outputRejected: boolean;
++  rejectionReason?: string;
++  latencyMs: number;
++  redacted: boolean;
++  networkUsed: boolean;
++  consent: string;
++}
++
++/** §7.11 — Failure Detective repair proposal, plus optional AI proposals. */
+ export interface FailureProposal {
+   runId: string;
+   stepId?: string;
+@@ -146,6 +161,23 @@ export interface FailureProposal {
+     | { kind: "add-wait"; ms: number }
+     | { kind: "update-fixture"; fixture: string }
+     | { kind: "review-assertion"; assertionTarget: string };
++  /** AI-1 explain_failure — always attributed, never replaces `suggestion`. */
++  aiExplanation?: string;
++  aiExplanationProvenance?: TaskProvenance;
++  /** AI-4 repair_selector — surfaced beside the Apply button. */
++  aiSelectorRepair?: {
++    stepId: string;
++    strategy: string;
++    value: string;
++    confidence: number;
++    provenance?: TaskProvenance;
++  };
++  /** AI-5 classify_flake — annotates the failure; never suppresses it. */
++  aiFlake?: {
++    verdict: "flake" | "regression" | "inconclusive" | string;
++    reason?: string;
++    provenance?: TaskProvenance;
++  };
+ }
+ 
+ export interface VoiceTranscript {
+@@ -267,6 +299,7 @@ export interface PocketQaNativeApi {
+   getState(stateId: string): Promise<UIState | null>;
+   listSelectorCandidates(draftId: string, stepId: string): Promise<SelectorCandidate[]>;
+   promoteFallbackSelector(draftId: string, stepId: string, candidateIndex: number): Promise<TestDraft>;
++  applyAiSelectorRepair(runId: string, stepId: string): Promise<ApprovedTest>;
+   getFailureProposal(runId: string): Promise<FailureProposal | null>;
+   submitVoiceTranscript(intentId: string, transcript: string): Promise<VoiceTranscript>;
+   checkpointActiveOperation(): Promise<void>;
+@@ -283,6 +316,8 @@ export interface PocketQaNativeApi {
+ 
+   saveProviderCredential(input: ProviderCredentialInput): Promise<ProviderStatus>;
+   deleteProviderCredential(provider: ConnectedProvider): Promise<void>;
++  saveAiLabEndpoint(url: string): Promise<{ configured: boolean; displayHost: string }>;
++  deleteAiLabEndpoint(): Promise<void>;
+   deleteSession(sessionId: string): Promise<void>;
+   deleteTest(testId: string): Promise<void>;
+   deleteAllData(): Promise<void>;

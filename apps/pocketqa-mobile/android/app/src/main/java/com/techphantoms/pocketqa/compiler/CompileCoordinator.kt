@@ -77,14 +77,26 @@ class CompileCoordinator(
             !existing.startsWith("draft_")) return
         val request = buildJsonObject {
             put("intent", JsonPrimitive(intent))
-            put("stepCount", JsonPrimitive(draft["steps"]?.jsonArray?.size ?: 0))
-            put("packageName", draft["packageName"] ?: JsonPrimitive(""))
+            put("stepLabels", buildJsonArray {
+                draft["steps"]?.jsonArray?.forEach { step ->
+                    step.jsonObject["label"]?.let(::add)
+                }
+            })
+            put("observedFacts", buildJsonArray {
+                repo.candidateAssertionsForDraft(draftId).take(8).forEach { candidate ->
+                    add(buildJsonObject {
+                        put("id", candidate["id"] ?: JsonPrimitive(""))
+                        put("fact", JsonPrimitive(candidateFact(candidate)))
+                    })
+                }
+            })
+            put("assertionCount", JsonPrimitive(draft["finalAssertions"]?.jsonArray?.size ?: 0))
         }
         val result = tasks.run(
             taskId = "name_test",
             request = request,
             consent = ConsentToken.GrantedForOperation("name_test", draftId),
-            timeoutMs = 2_000,
+            timeoutMs = 5_000,
         )
         val name = result.value?.get("name")?.jsonPrimitive?.contentOrNull
         if (!name.isNullOrBlank() && name.length in 3..80) {
@@ -103,37 +115,81 @@ class CompileCoordinator(
         val candidates = repo.candidateAssertionsForDraft(draftId)
         if (candidates.isEmpty()) return
 
+        val allowedIds = candidates.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }
+        val serviceCandidates = candidates.map { candidate ->
+            val target = candidate["target"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            buildJsonObject {
+                put("id", candidate["id"] ?: JsonPrimitive(""))
+                put("fact", JsonPrimitive(candidateFact(candidate)))
+                put("sourceStateId", candidate["sourceStateId"] ?: JsonPrimitive(""))
+                put("allowedKinds", buildJsonArray {
+                    add(JsonPrimitive("VISIBLE"))
+                    add(JsonPrimitive("TEXT_CONTAINS"))
+                })
+                put("observedValue", JsonPrimitive(target))
+                put("selectorLabel", JsonPrimitive(target))
+                put("isEndState", JsonPrimitive(true))
+            }
+        }
+
         val request = buildJsonObject {
-            put("intent", JsonPrimitive(intent))
-            put("candidates", JsonArray(candidates))
+            put("intentText", JsonPrimitive(intent))
+            put("targetPackage", draft["packageName"] ?: JsonPrimitive(""))
+            put("candidates", JsonArray(serviceCandidates))
+            put("allowedCandidateIds", buildJsonArray {
+                allowedIds.forEach { add(JsonPrimitive(it)) }
+            })
+            put("maxAssertions", JsonPrimitive(4))
         }
         val compileRes = tasks.run(
             taskId = "compile_intent",
             request = request,
             consent = ConsentToken.GrantedForOperation("compile_intent", draftId),
-            timeoutMs = 4_000,
+            timeoutMs = 7_000,
         )
-        val allowed = compileRes.value?.get("selectedIds")?.jsonArray
-            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
-            ?.toSet()
+        val selected = compileRes.value?.get("selected")?.jsonArray
+            ?.map { it.jsonObject }
             ?: return
-        val filtered = candidates.filter {
-            it["id"]?.jsonPrimitive?.contentOrNull in allowed
+        val selectedById = selected.associateBy {
+            it["candidateId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        }
+        val filtered = candidates.mapNotNull { candidate ->
+            val id = candidate["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val proposal = selectedById[id] ?: return@mapNotNull null
+            JsonObject(candidate + mapOf(
+                "confidence" to (proposal["confidence"] ?: JsonPrimitive(0.0)),
+                "serviceKind" to (proposal["kind"] ?: JsonPrimitive("VISIBLE")),
+            ))
         }
         if (filtered.isEmpty()) return
 
         val rankReq = buildJsonObject {
             put("intent", JsonPrimitive(intent))
-            put("candidates", JsonArray(filtered))
+            put("candidates", buildJsonArray {
+                filtered.forEach { candidate ->
+                    add(buildJsonObject {
+                        put("id", candidate["id"] ?: JsonPrimitive(""))
+                        put("kind", candidate["serviceKind"] ?: JsonPrimitive("VISIBLE"))
+                        put("fact", JsonPrimitive(candidateFact(candidate)))
+                        put("sourceStateId", candidate["sourceStateId"] ?: JsonPrimitive(""))
+                        put("isEndState", JsonPrimitive(true))
+                    })
+                }
+            })
+            put("allowedCandidateIds", buildJsonArray {
+                filtered.forEach { candidate ->
+                    candidate["id"]?.let(::add)
+                }
+            })
         }
         val rankRes = tasks.run(
             taskId = "rank_assertions",
             request = rankReq,
             consent = ConsentToken.GrantedForOperation("rank_assertions", draftId),
-            timeoutMs = 2_000,
+            timeoutMs = 5_000,
         )
-        val orderedIds = rankRes.value?.get("orderedIds")?.jsonArray
-            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+        val orderedIds = rankRes.value?.get("ranked")?.jsonArray
+            ?.mapNotNull { it.jsonObject["candidateId"]?.jsonPrimitive?.contentOrNull }
             ?: filtered.mapNotNull { it["id"]?.jsonPrimitive?.contentOrNull }
 
         val byId = filtered.associateBy { it["id"]!!.jsonPrimitive.content }
@@ -149,6 +205,11 @@ class CompileCoordinator(
             ))
         }
         repo.applyAiFinalAssertionProposals(draftId, ranked, combined)
+    }
+
+    private fun candidateFact(candidate: JsonObject): String {
+        val target = candidate["target"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        return "Text '$target' visible in the final observed state"
     }
 
     fun job(id: String): WritableMap = repo.getCompileJob(id)

@@ -336,18 +336,31 @@ class ReplayExecutor(
             // AI-1 explain_failure — only when the run failed.
             if (failure != null) {
                 jobs += async {
+                    val failureClass = taskFailureClass(
+                        failure["category"]?.jsonPrimitive?.contentOrNull
+                    )
+                    val factSource = taskFactSource(failureClass)
+                    val factId = "failure_fact"
                     val request = buildJsonObject {
-                        put("category", failure["category"] ?: JsonPrimitive("unknown"))
-                        put("summary", failure["summary"] ?: JsonPrimitive(""))
-                        put("testId", JsonPrimitive(testId))
+                        put("intent", test["intent"] ?: JsonPrimitive("Test the approved mobile flow"))
+                        put("failureClass", JsonPrimitive(failureClass))
+                        put("stepLabel", JsonPrimitive(failingStepLabel(test, runId).orEmpty()))
+                        put("facts", buildJsonArray {
+                            add(buildJsonObject {
+                                put("id", JsonPrimitive(factId))
+                                put("source", JsonPrimitive(factSource))
+                                put("statement", failure["summary"] ?: JsonPrimitive("The run failed."))
+                            })
+                        })
+                        put("allowedFactIds", buildJsonArray { add(JsonPrimitive(factId)) })
                     }
                     val result = client.run(
                         taskId = "explain_failure",
                         request = request,
                         consent = ConsentToken.GrantedForOperation("explain_failure", runId),
-                        timeoutMs = 4_000,
+                        timeoutMs = 7_000,
                     )
-                    val explanation = result.value?.get("explanation")?.jsonPrimitive?.contentOrNull
+                    val explanation = result.value?.get("summary")?.jsonPrimitive?.contentOrNull
                     if (!explanation.isNullOrBlank()) {
                         repo.applyAiFailureExplanation(runId, explanation, result.provenance.toJsonObject())
                     }
@@ -364,17 +377,37 @@ class ReplayExecutor(
             val priors = repo.runsForTest(testId, limit = 6)
             if (priors.size >= 2) {
                 jobs += async {
+                    val failedRuns = priors.filter {
+                        it["result"]?.jsonObject?.get("failure") != null
+                    }
+                    if (failedRuns.isEmpty()) return@async
                     val request = buildJsonObject {
-                        put("history", buildJsonArray {
-                            for (r in priors) {
+                        put("runs", buildJsonArray {
+                            for (r in failedRuns) {
+                                val resultObj = r["result"]?.jsonObject ?: continue
+                                val failureObj = resultObj["failure"]?.jsonObject ?: continue
+                                val priorRunId = r["runId"]?.jsonPrimitive?.contentOrNull.orEmpty()
+                                val failedStep = resultObj["stepResults"]?.jsonArray
+                                    ?.map { it.jsonObject }
+                                    ?.firstOrNull { it["status"]?.jsonPrimitive?.contentOrNull == "fail" }
                                 add(buildJsonObject {
-                                    put("passed", r["result"]?.jsonObject?.get("passed")
-                                        ?: JsonPrimitive(false))
-                                    put("category", r["result"]?.jsonObject?.get("failure")
-                                        ?.jsonObject?.get("category") ?: JsonPrimitive(""))
-                                    put("summary", r["result"]?.jsonObject?.get("failure")
-                                        ?.jsonObject?.get("summary") ?: JsonPrimitive(""))
+                                    put("runId", JsonPrimitive(priorRunId))
+                                    put("stepIndex", JsonPrimitive(
+                                        failedStep?.get("stepId")?.jsonPrimitive?.contentOrNull
+                                            ?.substringAfterLast('_')?.toIntOrNull() ?: 0
+                                    ))
+                                    put("stepLabel", JsonPrimitive(
+                                        failedStep?.get("reason")?.jsonPrimitive?.contentOrNull.orEmpty()
+                                    ))
+                                    put("features", flakeFeatures(
+                                        failureObj["category"]?.jsonPrimitive?.contentOrNull
+                                    ))
                                 })
+                            }
+                        })
+                        put("allowedRunIds", buildJsonArray {
+                            failedRuns.forEach { prior ->
+                                prior["runId"]?.let(::add)
                             }
                         })
                     }
@@ -382,14 +415,22 @@ class ReplayExecutor(
                         taskId = "classify_flake",
                         request = request,
                         consent = ConsentToken.GrantedForOperation("classify_flake", runId),
-                        timeoutMs = 3_000,
+                        timeoutMs = 7_000,
                     )
-                    val verdict = result.value?.get("verdict")?.jsonPrimitive?.contentOrNull
-                    if (verdict != null) {
+                    val classified = result.value?.get("classified")?.jsonArray
+                    if (classified != null) {
+                        val hasPass = priors.any {
+                            it["result"]?.jsonObject?.get("passed")?.jsonPrimitive?.contentOrNull == "true"
+                        }
+                        val verdict = if (hasPass && failedRuns.isNotEmpty()) "flake" else "regression"
+                        val reason = result.value?.get("groups")?.jsonArray?.firstOrNull()
+                            ?.jsonObject?.get("sharedCause")?.jsonPrimitive?.contentOrNull
+                            ?: classified.firstOrNull()?.jsonObject?.get("failureClass")
+                                ?.jsonPrimitive?.contentOrNull
                         repo.applyFlakeVerdict(
                             runId = runId,
                             verdict = verdict,
-                            reason = result.value?.get("reason")?.jsonPrimitive?.contentOrNull,
+                            reason = reason,
                             provenance = result.provenance.toJsonObject(),
                         )
                     }
@@ -438,20 +479,38 @@ class ReplayExecutor(
         }
         if (anchorList.isEmpty()) return
 
+        val nodesById = state["nodes"]?.jsonArray?.map { it.jsonObject }
+            ?.associateBy { it["nodeId"]?.jsonPrimitive?.contentOrNull.orEmpty() }
+            ?: return
+        val primary = selector["primary"]?.jsonObject ?: return
         val request = buildJsonObject {
-            put("originalStrategy", selector["primary"]?.jsonObject?.get("strategy") ?: JsonPrimitive(""))
-            put("originalValue", selector["primary"]?.jsonObject?.get("value") ?: JsonPrimitive(""))
-            put("candidateAnchors", JsonArray(anchorList))
+            put("brokenSelector", buildJsonObject {
+                put("id", JsonPrimitive(failingStepId))
+                put("kind", primary["strategy"] ?: JsonPrimitive("unknown"))
+                when (primary["strategy"]?.jsonPrimitive?.contentOrNull) {
+                    "resourceId" -> put("resourceId", primary["value"] ?: JsonPrimitive(""))
+                    "accessibilityLabel" -> put("contentDescription", primary["value"] ?: JsonPrimitive(""))
+                    "textAndRole" -> put("text", primary["value"] ?: JsonPrimitive(""))
+                }
+            })
+            put("currentNodes", buildJsonArray {
+                nodesById.values.forEach { add(taskNodeSummary(it)) }
+            })
+            put("allowedNodeIds", buildJsonArray {
+                nodesById.keys.filter { it.isNotBlank() }.forEach { add(JsonPrimitive(it)) }
+            })
+            put("intentHint", test["intent"] ?: JsonPrimitive(""))
         }
         val result = client.run(
             taskId = "repair_selector",
             request = request,
             consent = ConsentToken.GrantedForOperation("repair_selector", runId),
-            timeoutMs = 4_000,
+            timeoutMs = 7_000,
         )
-        val strategy = result.value?.get("strategy")?.jsonPrimitive?.contentOrNull ?: return
-        val value = result.value?.get("value")?.jsonPrimitive?.contentOrNull ?: return
-        val confidence = result.value?.get("confidence")?.jsonPrimitive?.doubleOrNull ?: 0.0
+        val best = result.value?.get("ranked")?.jsonArray?.firstOrNull()?.jsonObject ?: return
+        val proposedNode = nodesById[best["nodeId"]?.jsonPrimitive?.contentOrNull] ?: return
+        val (strategy, value) = strongestAnchor(proposedNode) ?: return
+        val confidence = best["score"]?.jsonPrimitive?.doubleOrNull ?: 0.0
 
         // Verify deterministically: the proposal must resolve to exactly one
         // node in the failing state. If not, drop it — the model is proposing
@@ -475,6 +534,93 @@ class ReplayExecutor(
             confidence = confidence,
             provenance = result.provenance.toJsonObject(),
         )
+    }
+
+    private fun failingStepLabel(test: JsonObject, runId: String): String? {
+        val failedStepId = repo.readRunJson(runId)?.get("result")?.jsonObject
+            ?.get("stepResults")?.jsonArray?.map { it.jsonObject }
+            ?.firstOrNull { it["status"]?.jsonPrimitive?.contentOrNull == "fail" }
+            ?.get("stepId")?.jsonPrimitive?.contentOrNull
+        return test["steps"]?.jsonArray?.map { it.jsonObject }
+            ?.firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull == failedStepId }
+            ?.get("label")?.jsonPrimitive?.contentOrNull
+    }
+
+    private fun taskFailureClass(category: String?): String = when (category) {
+        "selector-drift" -> "SELECTOR_DRIFT"
+        "assertion-regression" -> "ASSERTION_REGRESSION"
+        "navigation-divergence" -> "NAVIGATION_DIVERGENCE"
+        "timeout-performance" -> "TIMEOUT_PERFORMANCE"
+        "target-app-crash" -> "APP_CRASH"
+        "fixture-environment" -> "FIXTURE_ENVIRONMENT"
+        "permission-capture" -> "CAPTURE_LIMITATION"
+        else -> "UNKNOWN"
+    }
+
+    private fun taskFactSource(failureClass: String): String = when (failureClass) {
+        "SELECTOR_DRIFT" -> "SELECTOR"
+        "ASSERTION_REGRESSION" -> "ASSERTION"
+        "TIMEOUT_PERFORMANCE" -> "TIMING"
+        "APP_CRASH" -> "DEVICE"
+        "FIXTURE_ENVIRONMENT" -> "FIXTURE"
+        "CAPTURE_LIMITATION" -> "CAPTURE"
+        else -> "STATE_DIFF"
+    }
+
+    private fun flakeFeatures(category: String?): JsonObject = buildJsonObject {
+        val failureClass = taskFailureClass(category)
+        put("selectorResolutionCount", JsonPrimitive(if (failureClass == "SELECTOR_DRIFT") 0 else 1))
+        put("similarNodePresent", JsonPrimitive(failureClass == "SELECTOR_DRIFT"))
+        put("expectedFactPresent", JsonPrimitive(false))
+        put("navigationActionsSucceeded", JsonPrimitive(failureClass != "NAVIGATION_DIVERGENCE"))
+        put("fingerprintChanged", JsonPrimitive(failureClass == "NAVIGATION_DIVERGENCE"))
+        put("windowChanged", JsonPrimitive(failureClass == "NAVIGATION_DIVERGENCE"))
+        put("appearedAfterBudget", JsonPrimitive(failureClass == "TIMEOUT_PERFORMANCE"))
+        put("processAlive", JsonPrimitive(failureClass != "APP_CRASH"))
+        put("crashSignal", JsonPrimitive(failureClass == "APP_CRASH"))
+        put("fixtureResetOk", JsonPrimitive(failureClass != "FIXTURE_ENVIRONMENT"))
+        put("startedInExpectedState", JsonPrimitive(failureClass != "FIXTURE_ENVIRONMENT"))
+        put("treeAvailable", JsonPrimitive(failureClass != "CAPTURE_LIMITATION"))
+        put("screenshotAvailable", JsonPrimitive(true))
+        put("serviceConnected", JsonPrimitive(failureClass != "CAPTURE_LIMITATION"))
+    }
+
+    private fun taskNodeSummary(node: JsonObject): JsonObject = buildJsonObject {
+        put("nodeId", node["nodeId"] ?: JsonPrimitive(""))
+        put("role", JsonPrimitive(taskRole(node["role"]?.jsonPrimitive?.contentOrNull)))
+        node["resourceId"]?.let { put("resourceId", it) }
+        node["text"]?.let { put("text", it) }
+        node["contentDescription"]?.let { put("contentDescription", it) }
+        put("enabled", node["enabled"] ?: JsonPrimitive(true))
+        put("visible", node["visible"] ?: JsonPrimitive(true))
+        put("clickable", node["clickable"] ?: JsonPrimitive(false))
+        put("editable", node["editable"] ?: JsonPrimitive(false))
+        put("checkable", node["checkable"] ?: JsonPrimitive(false))
+        node["checked"]?.let { put("checked", it) }
+        put("selected", node["selected"] ?: JsonPrimitive(false))
+        put("focusable", node["focusable"] ?: JsonPrimitive(false))
+    }
+
+    private fun taskRole(role: String?): String = when (role) {
+        "button" -> "BUTTON"
+        "text" -> "TEXT"
+        "textField", "passwordField", "otpField", "pinField" -> "INPUT"
+        "checkbox" -> "CHECKBOX"
+        "switch" -> "SWITCH"
+        "image" -> "IMAGE"
+        else -> "UNKNOWN"
+    }
+
+    private fun strongestAnchor(node: JsonObject): Pair<String, String>? {
+        node["testId"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?.let { return "testId" to it }
+        node["resourceId"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?.let { return "resourceId" to it }
+        node["contentDescription"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?.let { return "accessibilityLabel" to it }
+        node["text"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() }
+            ?.let { return "textAndRole" to it }
+        return null
     }
 
     // ---------- selector resolution ----------

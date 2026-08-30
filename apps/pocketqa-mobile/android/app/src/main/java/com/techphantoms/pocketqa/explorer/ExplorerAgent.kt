@@ -110,7 +110,7 @@ class ExplorerAgent(
                 break
             }
             val goal = mission["goal"]?.jsonPrimitive?.contentOrNull.orEmpty()
-            val ranked = rankCandidates(candidates, missionId, goal)
+            val ranked = rankCandidates(candidates, missionId, goal, maxActions - actions)
             if (ranked.isEmpty()) {
                 events += ev("stop", "Model requested early stop.")
                 proposal = buildProposal(state, snapshot.stateId, mission)
@@ -191,35 +191,43 @@ class ExplorerAgent(
         candidates: List<JsonObject>,
         missionId: String,
         goal: String,
+        remainingActions: Int,
     ): List<JsonObject> {
         val ids = candidates.mapNotNull { it["nodeId"]?.jsonPrimitive?.contentOrNull }
         if (ids.isEmpty()) return emptyList()
 
         val request = buildJsonObject {
             put("goal", JsonPrimitive(goal))
-            put("candidateIds", buildJsonArray { for (id in ids) add(JsonPrimitive(id)) })
-            put("candidateLabels", buildJsonArray {
+            put("stateSummary", JsonPrimitive(
+                candidates.mapNotNull { it["text"]?.jsonPrimitive?.contentOrNull }
+                    .take(5).joinToString(" · ")
+            ))
+            put("safeCandidates", buildJsonArray {
                 for (c in candidates) add(buildJsonObject {
-                    put("id", c["nodeId"] ?: JsonPrimitive(""))
-                    put("text", c["text"] ?: JsonPrimitive(""))
-                    put("role", c["role"] ?: JsonPrimitive(""))
+                    put("proposalId", c["nodeId"] ?: JsonPrimitive(""))
+                    put("label", c["text"] ?: c["contentDescription"] ?: JsonPrimitive("Control"))
+                    put("risk", JsonPrimitive("LOW"))
+                    put("novelty", JsonPrimitive(1.0))
+                    put("reversibleLikelihood", JsonPrimitive(0.8))
+                    put("selectorStability", JsonPrimitive(
+                        if (c["testId"] != null || c["resourceId"] != null) 0.95 else 0.7
+                    ))
+                    put("visitCount", JsonPrimitive(0))
                 })
             })
+            put("remainingActions", JsonPrimitive(remainingActions.coerceIn(0, 5)))
         }
         val result = tasks.run(
             taskId = "rank_explorer_candidate",
             request = request,
             consent = ConsentToken.GrantedForOperation("rank_explorer_candidate", missionId),
-            timeoutMs = 2_000,
+            timeoutMs = 5_000,
         )
-        val stopEarly = result.value?.get("stopEarly")?.jsonPrimitive?.contentOrNull == "true"
-        if (stopEarly) return emptyList()
-        val orderedIds = result.value?.get("orderedIds")?.jsonArray
-            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
-            ?: run {
-                // Deterministic fallback — the existing on-device ranker.
-                inference.rankCandidates("explore next", ids)
-            }
+        val choice = result.value?.get("choice")?.jsonPrimitive?.contentOrNull
+        if (choice == "STOP") return emptyList()
+        val orderedIds = if (choice != null) {
+            listOf(choice) + ids.filter { it != choice }
+        } else inference.rankCandidates("explore next", ids)
         // Never widen the set: reject any id we didn't offer.
         val allowed = ids.toSet()
         val filtered = orderedIds.filter { it in allowed }

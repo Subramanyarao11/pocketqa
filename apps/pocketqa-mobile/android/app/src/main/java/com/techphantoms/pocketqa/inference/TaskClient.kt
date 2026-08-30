@@ -128,7 +128,18 @@ class TaskClient(
         val redactedRequest = redactRequest(request)
         val body = redactedRequest.payload.toString()
             .toRequestBody("application/json".toMediaTypeOrNull())
-        val url = "$base/tasks/$taskId"
+        // A granted per-operation token is the explicit opt-in required by the
+        // AI-Lab route for connected inference. Tasks that are marked
+        // NotRequired stay on the deterministic server twin.
+        val query = when (consent) {
+            is ConsentToken.GrantedForOperation -> "?engine=openrouter&consent=true"
+            ConsentToken.NotRequired -> "?engine=deterministic"
+            ConsentToken.Denied -> return@withContext Result(
+                value = null,
+                provenance = Provenance.deterministic(consent),
+            )
+        }
+        val url = "$base/tasks/$taskId$query"
         val req = Request.Builder()
             .url(url)
             .addHeader("X-Consent-Scope", consent.serverState)
@@ -176,7 +187,9 @@ class TaskClient(
             )
         }
 
-        val body_ = parsed["response"]?.jsonObject
+        // The service envelope is { result, provenance }. The original patch
+        // looked for "response", silently discarding every successful task.
+        val body_ = parsed["result"]?.jsonObject
         val provenance = readProvenance(
             envelope = parsed,
             latencyFallback = latency,
@@ -208,7 +221,7 @@ class TaskClient(
             rejectionReason = p?.get("rejectionReason")?.jsonPrimitive?.contentOrNull,
             latencyMs = p?.get("latencyMs")?.jsonPrimitive?.longOrNull ?: latencyFallback,
             redacted = p?.get("redactionApplied")?.jsonPrimitive?.booleanOrNull ?: redacted,
-            networkUsed = true,
+            networkUsed = p?.get("networkUsed")?.jsonPrimitive?.booleanOrNull ?: usedModel,
             consent = consent.serverState,
         )
     }

@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
@@ -669,6 +670,25 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         JsonBridge.json.parseToJsonElement(payload).jsonObject
     }
 
+    /** Keep the user-facing offline/connected labels aligned with provenance. */
+    private fun aiWasUsed(provenance: JsonObject): Boolean {
+        if (provenance["usedModel"]?.jsonPrimitive?.booleanOrNull == true ||
+            provenance["networkUsed"]?.jsonPrimitive?.booleanOrNull == true) {
+            return true
+        }
+        return listOf("selection", "ranking").any { key ->
+            provenance[key]?.let { element ->
+                runCatching { aiWasUsed(element.jsonObject) }.getOrDefault(false)
+            } == true
+        }
+    }
+
+    private fun connectedDraftFields(provenance: JsonObject): Map<String, kotlinx.serialization.json.JsonElement> =
+        if (aiWasUsed(provenance)) mapOf(
+            "compiledBy" to JsonPrimitive("connected-assist"),
+            "offlineOnly" to JsonPrimitive(false),
+        ) else emptyMap()
+
     /**
      * AI-3 name_test — persist a proposed test name alongside its provenance
      * so the review screen can render "Named by google/gemini-2.5-flash".
@@ -688,7 +708,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                 put("value", JsonPrimitive(name))
                 put("provenance", provenance)
             },
-        ))
+        ) + connectedDraftFields(provenance))
         dao.upsertDraft(row.copy(
             name = name,
             payload = next.toString(),
@@ -777,7 +797,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         val next = JsonObject(current + mapOf(
             "finalAssertions" to proposals,
             "aiFinalAssertionProvenance" to provenance,
-        ))
+        ) + connectedDraftFields(provenance))
         dao.upsertDraft(row.copy(
             payload = next.toString(),
             revision = row.revision + 1,
@@ -808,7 +828,10 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             "aiExplanation" to JsonPrimitive(text),
             "aiExplanationProvenance" to provenance,
         ))
-        val newResult = JsonObject(result + mapOf("failure" to newFailure))
+        val newResult = JsonObject(result + mapOf(
+            "failure" to newFailure,
+            "offline" to JsonPrimitive(!aiWasUsed(provenance)),
+        ))
         val next = JsonObject(current + mapOf("result" to newResult))
         dao.upsertRun(row.copy(payload = next.toString()))
     }
@@ -835,7 +858,12 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             put("confidence", JsonPrimitive(confidence))
             put("provenance", provenance)
         }
-        val next = JsonObject(current + mapOf("aiSelectorRepair" to proposal))
+        val result = current["result"]?.jsonObject
+        val connectedResult = if (result != null && aiWasUsed(provenance)) {
+            JsonObject(result + mapOf("offline" to JsonPrimitive(false)))
+        } else result
+        val next = JsonObject(current + mapOf("aiSelectorRepair" to proposal) +
+            (connectedResult?.let { mapOf("result" to it) } ?: emptyMap()))
         dao.upsertRun(row.copy(payload = next.toString()))
     }
 
@@ -911,7 +939,12 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             if (reason != null) put("reason", JsonPrimitive(reason))
             put("provenance", provenance)
         }
-        val next = JsonObject(current + mapOf("aiFlake" to flake))
+        val result = current["result"]?.jsonObject
+        val connectedResult = if (result != null && aiWasUsed(provenance)) {
+            JsonObject(result + mapOf("offline" to JsonPrimitive(false)))
+        } else result
+        val next = JsonObject(current + mapOf("aiFlake" to flake) +
+            (connectedResult?.let { mapOf("result" to it) } ?: emptyMap()))
         dao.upsertRun(row.copy(payload = next.toString()))
     }
 
