@@ -129,6 +129,11 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
             placeholder="Test name"
             accessibilityLabel="Test name"
           />
+          {draft.aiName?.provenance?.model && (
+            <Text style={typography.metadata}>
+              Named by {draft.aiName.provenance.model} — edit freely before approve
+            </Text>
+          )}
           <Text style={typography.bodyMuted}>{draft.intent}</Text>
           <View style={styles.pillRow}>
             <StatusPill label={`Compiled by ${draft.compiledBy}`} tone="cyan" />
@@ -156,9 +161,23 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
         ))}
 
         <Text style={typography.eyebrow}>Final assertions</Text>
+        {draft.aiFinalAssertionProvenance?.usedModel && draft.finalAssertions.some((a) => a.proposed) && (
+          <InlineNotice
+            title={`Proposed from your intent "${draft.intent}"`}
+            detail={
+              `Every proposal is a candidate the deterministic layer already produced — the model chose, ` +
+              `it did not author. Uncheck any you don't want, or add your own below.`
+            }
+            tone="info"
+          />
+        )}
         {draft.finalAssertions.length === 0 ? (
           <InlineNotice
-            title="Add an end-state assertion"
+            title={
+              draft.aiFinalAssertionProvenance
+                ? `Couldn't propose assertions — add one below`
+                : `Add an end-state assertion`
+            }
             detail="PocketQA requires at least one assertion in the last observed state."
             tone="warn"
           />
@@ -167,7 +186,15 @@ export function ReviewTestScreen({ navigation, route }: ScreenProps<"ReviewTest"
             {draft.finalAssertions.map((a) => (
               <View key={a.id} style={styles.assertion}>
                 <View style={layout.fill}>
-                  <Text style={typography.body}>{a.kind} — "{a.target}"</Text>
+                  <Text style={typography.body}>
+                    {a.kind} — "{a.target}"
+                    {a.proposed && (
+                      <Text style={typography.metadata}>
+                        {"  proposed"}
+                        {typeof a.aiConfidence === "number" ? ` · ${a.aiConfidence.toFixed(2)}` : ""}
+                      </Text>
+                    )}
+                  </Text>
                   <Text style={typography.bodyMuted}>{a.reason}</Text>
                 </View>
                 <LinkButton

@@ -85,6 +85,8 @@ interface PocketQaDao {
     suspend fun run(runId: String): ReplayRunRow?
     @Query("SELECT * FROM replay_run WHERE testId = :testId ORDER BY finishedAt DESC LIMIT 1")
     suspend fun latestRunForTest(testId: String): ReplayRunRow?
+    @Query("SELECT * FROM replay_run WHERE testId = :testId ORDER BY finishedAt DESC LIMIT :limit")
+    suspend fun runsForTest(testId: String, limit: Int): List<ReplayRunRow>
 
     // Missions ----------------------------------------------------------------------
     @Insert(onConflict = OnConflictStrategy.REPLACE)

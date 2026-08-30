@@ -7,7 +7,9 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.OperationLock
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
+import com.techphantoms.pocketqa.inference.ConsentToken
 import com.techphantoms.pocketqa.inference.InferenceRouter
+import com.techphantoms.pocketqa.inference.TaskClient
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.JsonBridge
 import com.techphantoms.pocketqa.storage.PocketQaRepository
@@ -40,6 +42,7 @@ class ExplorerAgent(
     private val repo: PocketQaRepository,
     private val policy: PolicyEngine,
     private val inference: InferenceRouter,
+    private val tasks: TaskClient,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val stopSignals = ConcurrentHashMap<String, Boolean>()
@@ -106,7 +109,14 @@ class ExplorerAgent(
                 proposalStateId = snapshot.stateId
                 break
             }
-            val ranked = rankCandidates(candidates)
+            val goal = mission["goal"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val ranked = rankCandidates(candidates, missionId, goal)
+            if (ranked.isEmpty()) {
+                events += ev("stop", "Model requested early stop.")
+                proposal = buildProposal(state, snapshot.stateId, mission)
+                proposalStateId = snapshot.stateId
+                break
+            }
             val next = ranked.first()
             val nextNodeId = next["nodeId"]?.jsonPrimitive?.contentOrNull ?: break
             visitedNodeIds += nextNodeId
@@ -168,11 +178,53 @@ class ExplorerAgent(
         }
     }
 
-    private fun rankCandidates(candidates: List<JsonObject>): List<JsonObject> {
+    /**
+     * AI-6 rank_explorer_candidate — the model narrows a safe set, it never
+     * widens one. Every candidate handed here has already been classified by
+     * PolicyEngine as allowlisted, visible, non-sensitive. The model can
+     * return a re-ordering that is a *subset* of these IDs; anything
+     * unfamiliar is rejected server-side and we fall back to the deterministic
+     * ordering. The model may also return `stopEarly: true`, which we honour
+     * as an immediate STOP — the caller checks the returned list emptiness.
+     */
+    private suspend fun rankCandidates(
+        candidates: List<JsonObject>,
+        missionId: String,
+        goal: String,
+    ): List<JsonObject> {
         val ids = candidates.mapNotNull { it["nodeId"]?.jsonPrimitive?.contentOrNull }
-        val orderedIds = inference.rankCandidates("explore next", ids)
+        if (ids.isEmpty()) return emptyList()
+
+        val request = buildJsonObject {
+            put("goal", JsonPrimitive(goal))
+            put("candidateIds", buildJsonArray { for (id in ids) add(JsonPrimitive(id)) })
+            put("candidateLabels", buildJsonArray {
+                for (c in candidates) add(buildJsonObject {
+                    put("id", c["nodeId"] ?: JsonPrimitive(""))
+                    put("text", c["text"] ?: JsonPrimitive(""))
+                    put("role", c["role"] ?: JsonPrimitive(""))
+                })
+            })
+        }
+        val result = tasks.run(
+            taskId = "rank_explorer_candidate",
+            request = request,
+            consent = ConsentToken.GrantedForOperation("rank_explorer_candidate", missionId),
+            timeoutMs = 2_000,
+        )
+        val stopEarly = result.value?.get("stopEarly")?.jsonPrimitive?.contentOrNull == "true"
+        if (stopEarly) return emptyList()
+        val orderedIds = result.value?.get("orderedIds")?.jsonArray
+            ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+            ?: run {
+                // Deterministic fallback — the existing on-device ranker.
+                inference.rankCandidates("explore next", ids)
+            }
+        // Never widen the set: reject any id we didn't offer.
+        val allowed = ids.toSet()
+        val filtered = orderedIds.filter { it in allowed }
         val byId = candidates.associateBy { it["nodeId"]?.jsonPrimitive?.contentOrNull }
-        return orderedIds.mapNotNull { byId[it] }.ifEmpty { candidates }
+        return filtered.mapNotNull { byId[it] }.ifEmpty { candidates }
     }
 
     private fun buildProposal(state: JsonObject, stateId: String, mission: JsonObject): JsonObject {

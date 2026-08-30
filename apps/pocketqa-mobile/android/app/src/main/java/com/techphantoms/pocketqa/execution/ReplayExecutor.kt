@@ -8,14 +8,20 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.OperationLock
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
 import com.techphantoms.pocketqa.policy.FixtureLauncher
+import com.techphantoms.pocketqa.inference.ConsentToken
+import com.techphantoms.pocketqa.inference.TaskClient
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.JsonBridge
 import com.techphantoms.pocketqa.storage.PocketQaRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -43,6 +49,7 @@ class ReplayExecutor(
     private val ctx: ReactApplicationContext,
     private val repo: PocketQaRepository,
     private val policy: PolicyEngine,
+    private val tasks: TaskClient? = null,
 ) {
     private companion object {
         const val POLL_MS = 150L
@@ -301,11 +308,173 @@ class ReplayExecutor(
             failure == null,
             summary.toString())
 
-        emitFinished(runId, summary)
+        // Fire AI proposal layer concurrently. Each of these degrades to the
+        // deterministic Failure Detective screen when unavailable, and every
+        // failure path (unreachable, timeout, rejected output) is invisible
+        // to the caller — the persisted run keeps its deterministic shape.
+        runAiFailureAnalysis(runId, test, failure)
+
+        emitFinished(runId, repo.readRunJson(runId) ?: summary)
         OperationLock.release(OperationLock.Kind.REPLAY, runId)
         repo.endActiveOperation()
         stopSignals.remove(runId)
         jobs.remove(runId)
+    }
+
+    // ---------- AI proposal layer (§4 items 3/6/7) ----------
+
+    private suspend fun runAiFailureAnalysis(
+        runId: String,
+        test: JsonObject,
+        failure: JsonObject?,
+    ) {
+        val client = tasks ?: return
+        val testId = test["id"]?.jsonPrimitive?.contentOrNull.orEmpty()
+        coroutineScope {
+            val jobs = mutableListOf<kotlinx.coroutines.Deferred<Unit>>()
+
+            // AI-1 explain_failure — only when the run failed.
+            if (failure != null) {
+                jobs += async {
+                    val request = buildJsonObject {
+                        put("category", failure["category"] ?: JsonPrimitive("unknown"))
+                        put("summary", failure["summary"] ?: JsonPrimitive(""))
+                        put("testId", JsonPrimitive(testId))
+                    }
+                    val result = client.run(
+                        taskId = "explain_failure",
+                        request = request,
+                        consent = ConsentToken.GrantedForOperation("explain_failure", runId),
+                        timeoutMs = 4_000,
+                    )
+                    val explanation = result.value?.get("explanation")?.jsonPrimitive?.contentOrNull
+                    if (!explanation.isNullOrBlank()) {
+                        repo.applyAiFailureExplanation(runId, explanation, result.provenance.toJsonObject())
+                    }
+                }
+            }
+
+            // AI-4 repair_selector — only for selector-drift.
+            if (failure?.get("category")?.jsonPrimitive?.contentOrNull == "selector-drift") {
+                jobs += async { runRepairSelectorProposal(client, runId, test, failure) }
+            }
+
+            // AI-5 classify_flake — only when we have >=2 prior runs so an
+            // ambiguous middle exists to classify. Never suppresses the failure.
+            val priors = repo.runsForTest(testId, limit = 6)
+            if (priors.size >= 2) {
+                jobs += async {
+                    val request = buildJsonObject {
+                        put("history", buildJsonArray {
+                            for (r in priors) {
+                                add(buildJsonObject {
+                                    put("passed", r["result"]?.jsonObject?.get("passed")
+                                        ?: JsonPrimitive(false))
+                                    put("category", r["result"]?.jsonObject?.get("failure")
+                                        ?.jsonObject?.get("category") ?: JsonPrimitive(""))
+                                    put("summary", r["result"]?.jsonObject?.get("failure")
+                                        ?.jsonObject?.get("summary") ?: JsonPrimitive(""))
+                                })
+                            }
+                        })
+                    }
+                    val result = client.run(
+                        taskId = "classify_flake",
+                        request = request,
+                        consent = ConsentToken.GrantedForOperation("classify_flake", runId),
+                        timeoutMs = 3_000,
+                    )
+                    val verdict = result.value?.get("verdict")?.jsonPrimitive?.contentOrNull
+                    if (verdict != null) {
+                        repo.applyFlakeVerdict(
+                            runId = runId,
+                            verdict = verdict,
+                            reason = result.value?.get("reason")?.jsonPrimitive?.contentOrNull,
+                            provenance = result.provenance.toJsonObject(),
+                        )
+                    }
+                }
+            }
+
+            jobs.awaitAll()
+        }
+    }
+
+    private suspend fun runRepairSelectorProposal(
+        client: TaskClient,
+        runId: String,
+        test: JsonObject,
+        failure: JsonObject,
+    ) {
+        // Find the failing step + observe the failing state deterministically.
+        val stateId = failure["evidenceStateId"]?.jsonPrimitive?.contentOrNull ?: return
+        val runJson = repo.readRunJson(runId) ?: return
+        val failingStepId = runJson["result"]?.jsonObject?.get("stepResults")?.jsonArray
+            ?.firstOrNull { it.jsonObject["status"]?.jsonPrimitive?.contentOrNull == "fail" }
+            ?.jsonObject?.get("stepId")?.jsonPrimitive?.contentOrNull ?: return
+        val step = test["steps"]?.jsonArray?.map { it.jsonObject }
+            ?.firstOrNull { it["id"]?.jsonPrimitive?.contentOrNull == failingStepId } ?: return
+        val selector = step["selector"]?.jsonObject ?: return
+        val state = repo.uiStateRaw(stateId) ?: return
+
+        // Gather all resolvable candidate anchors from the failing state so
+        // the merge rule can reject anything the model didn't get from us.
+        val anchorList = mutableListOf<JsonObject>()
+        state["nodes"]?.jsonArray?.map { it.jsonObject }?.forEach { node ->
+            listOf(
+                "testId" to node["testId"]?.jsonPrimitive?.contentOrNull,
+                "resourceId" to node["resourceId"]?.jsonPrimitive?.contentOrNull,
+                "accessibilityLabel" to node["contentDescription"]?.jsonPrimitive?.contentOrNull,
+                "textAndRole" to node["text"]?.jsonPrimitive?.contentOrNull,
+            ).forEach { (strategy, value) ->
+                if (!value.isNullOrBlank()) {
+                    anchorList += buildJsonObject {
+                        put("strategy", JsonPrimitive(strategy))
+                        put("value", JsonPrimitive(value))
+                        put("nodeId", node["nodeId"] ?: JsonPrimitive(""))
+                    }
+                }
+            }
+        }
+        if (anchorList.isEmpty()) return
+
+        val request = buildJsonObject {
+            put("originalStrategy", selector["primary"]?.jsonObject?.get("strategy") ?: JsonPrimitive(""))
+            put("originalValue", selector["primary"]?.jsonObject?.get("value") ?: JsonPrimitive(""))
+            put("candidateAnchors", JsonArray(anchorList))
+        }
+        val result = client.run(
+            taskId = "repair_selector",
+            request = request,
+            consent = ConsentToken.GrantedForOperation("repair_selector", runId),
+            timeoutMs = 4_000,
+        )
+        val strategy = result.value?.get("strategy")?.jsonPrimitive?.contentOrNull ?: return
+        val value = result.value?.get("value")?.jsonPrimitive?.contentOrNull ?: return
+        val confidence = result.value?.get("confidence")?.jsonPrimitive?.doubleOrNull ?: 0.0
+
+        // Verify deterministically: the proposal must resolve to exactly one
+        // node in the failing state. If not, drop it — the model is proposing
+        // something the executor cannot use.
+        val matches = state["nodes"]?.jsonArray?.map { it.jsonObject }?.filter { node ->
+            when (strategy) {
+                "testId" -> node["testId"]?.jsonPrimitive?.contentOrNull == value
+                "resourceId" -> node["resourceId"]?.jsonPrimitive?.contentOrNull == value
+                "accessibilityLabel" -> node["contentDescription"]?.jsonPrimitive?.contentOrNull == value
+                "textAndRole" -> node["text"]?.jsonPrimitive?.contentOrNull == value
+                else -> false
+            }
+        } ?: emptyList()
+        if (matches.size != 1) return
+
+        repo.applyAiSelectorRepairProposal(
+            runId = runId,
+            stepId = failingStepId,
+            strategy = strategy,
+            value = value,
+            confidence = confidence,
+            provenance = result.provenance.toJsonObject(),
+        )
     }
 
     // ---------- selector resolution ----------

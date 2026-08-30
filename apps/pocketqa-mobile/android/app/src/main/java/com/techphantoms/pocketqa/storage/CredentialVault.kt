@@ -47,4 +47,26 @@ class CredentialVault(private val ctx: Context) {
     fun read(provider: String): String? = prefs.getString(provider, null)
 
     fun mask(apiKey: String): String = "••••" + apiKey.takeLast(4).uppercase()
+
+    /**
+     * Endpoint URLs (ai-lab service) are stored in the same vault as provider
+     * keys so a data wipe removes them too. They are displayed as the host —
+     * "10.0.0.4:8000" — rather than fully masked; the URL isn't a secret but
+     * we still route it through the vault so the "Delete all data" contract
+     * remains exhaustive.
+     */
+    fun storeEndpoint(name: String, url: String): String {
+        prefs.edit().putString("endpoint:$name", url).apply()
+        return endpointDisplay(url)
+    }
+
+    fun readEndpoint(name: String): String? = prefs.getString("endpoint:$name", null)
+
+    fun deleteEndpoint(name: String) { prefs.edit().remove("endpoint:$name").apply() }
+
+    private fun endpointDisplay(url: String): String {
+        val trimmed = url.trim().removeSuffix("/")
+        val host = trimmed.substringAfter("://", trimmed)
+        return if (host.length <= 32) host else host.take(29) + "…"
+    }
 }

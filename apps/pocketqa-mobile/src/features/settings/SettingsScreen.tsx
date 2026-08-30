@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { Text, TextInput, View } from "react-native";
 import { Info, Trash2 } from "lucide-react-native";
 import {
   iconSize,
   layout,
   makeStyles,
+  radius,
   spacing,
   useAppTheme,
   useThemeStyles,
@@ -17,6 +18,7 @@ import {
   ConfirmSheet,
   DangerButton,
   GhostButton,
+  PrimaryButton,
   Spacer,
   StatusPill,
   Toggle,
@@ -32,9 +34,31 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
   const readiness = useReadinessStore((s) => s.readiness);
   const refresh = useReadinessStore((s) => s.refresh);
   const [wipeOpen, setWipeOpen] = useState(false);
+  const [endpointDraft, setEndpointDraft] = useState<string>("");
+  const [endpointError, setEndpointError] = useState<string | null>(null);
 
   const setOffline = async (v: boolean) => {
     await PocketQaNative.setOfflineMode(v);
+    await refresh();
+  };
+
+  const saveEndpoint = async () => {
+    setEndpointError(null);
+    const url = endpointDraft.trim();
+    if (!/^https?:\/\//.test(url)) {
+      setEndpointError("Endpoint must start with http:// or https://");
+      return;
+    }
+    try {
+      await PocketQaNative.saveAiLabEndpoint(url);
+      setEndpointDraft("");
+      await refresh();
+    } catch (err) {
+      setEndpointError(String(err));
+    }
+  };
+  const clearEndpoint = async () => {
+    await PocketQaNative.deleteAiLabEndpoint();
     await refresh();
   };
 
@@ -77,6 +101,53 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
               tone={readiness?.onDeviceModel === "ready" ? "lime" : "amber"}
             />
           </View>
+        </Card>
+
+        <Text style={typography.eyebrow}>AI-Lab service</Text>
+        <Card>
+          <Text style={typography.h2}>Reasoning-task endpoint</Text>
+          <Text style={typography.bodyMuted}>
+            POST http(s)://host:8000/tasks/&lt;task&gt;. Never required for the core loop; every
+            AI surface degrades to the deterministic path when this is unset or unreachable.
+          </Text>
+          <View style={styles.rowBetween}>
+            <StatusPill
+              label={
+                readiness?.aiLab.configured
+                  ? readiness.aiLab.displayHost ?? "Configured"
+                  : "Off"
+              }
+              tone={readiness?.aiLab.configured ? "lime" : "dim"}
+            />
+            {readiness?.aiLab.configured && (
+              <DangerButton label="Clear endpoint" onPress={clearEndpoint} />
+            )}
+          </View>
+          {!readiness?.aiLab.configured && (
+            <>
+              <TextInput
+                value={endpointDraft}
+                onChangeText={setEndpointDraft}
+                placeholder="http://10.0.0.4:8000"
+                placeholderTextColor={colors.textDim}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+                accessibilityLabel="AI-Lab endpoint URL"
+                style={styles.endpointInput}
+              />
+              {endpointError && (
+                <Text style={{ color: colors.red, marginTop: spacing.xs }}>{endpointError}</Text>
+              )}
+              <View style={{ flexDirection: "row", justifyContent: "flex-end", marginTop: spacing.sm }}>
+                <PrimaryButton
+                  label="Save endpoint"
+                  onPress={saveEndpoint}
+                  disabled={endpointDraft.trim().length === 0}
+                />
+              </View>
+            </>
+          )}
         </Card>
 
         <Text style={typography.eyebrow}>Connected providers</Text>
@@ -195,10 +266,18 @@ function ProviderRow({
   );
 }
 
-const createStyles = makeStyles((_theme: AppTheme) => ({
+const createStyles = makeStyles((theme: AppTheme) => ({
   rowBetween: layout.rowBetween,
   rowActions: { ...layout.row, gap: spacing.sm, marginTop: spacing.sm },
   settingRow: { paddingVertical: spacing.sm },
   disabled: { opacity: 0.5 },
   flex: layout.fill,
+  endpointInput: {
+    marginTop: spacing.sm,
+    color: theme.colors.text,
+    borderWidth: 1,
+    borderColor: theme.colors.borderStrong,
+    borderRadius: radius.input,
+    padding: spacing.sm,
+  },
 }));
