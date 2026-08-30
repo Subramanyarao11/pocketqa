@@ -149,9 +149,30 @@ class CompileCoordinator(
             consent = ConsentToken.GrantedForOperation("compile_intent", draftId),
             timeoutMs = 7_000,
         )
+        // A failed or timed-out call is also an answer the operator is owed. This
+        // returned silently, so a request that never came back looked exactly
+        // like a fully offline compile — the third place the same gap hid, after
+        // the empty-selection branch below. Record that we asked, then stop.
         val selected = compileRes.value?.get("selected")?.jsonArray
             ?.map { it.jsonObject }
-            ?: return
+            ?: run {
+                // Only when a request actually went out. With no endpoint
+                // configured the provenance is the deterministic one and
+                // networkUsed is false — recording that would claim we tried
+                // when nothing was ever attempted, which is the same lie in the
+                // opposite direction.
+                if (compileRes.provenance.networkUsed) {
+                    repo.applyAiFinalAssertionProposals(
+                        draftId,
+                        emptyList(),
+                        buildJsonObject {
+                            put("selection", compileRes.provenance.toJsonObject())
+                            put("usedModel", JsonPrimitive(compileRes.provenance.usedModel))
+                        },
+                    )
+                }
+                return
+            }
         val selectedById = selected.associateBy {
             it["candidateId"]?.jsonPrimitive?.contentOrNull.orEmpty()
         }

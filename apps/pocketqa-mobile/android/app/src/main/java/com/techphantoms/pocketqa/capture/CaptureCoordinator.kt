@@ -177,6 +177,15 @@ class CaptureCoordinator(
         @Volatile
         private var lastStablePayload: String? = null
 
+        /** Forget the previous session's last screen; see start(). */
+        fun resetDiffBaseline() {
+            lastStableStateId = null
+            lastStablePayload = null
+            pendingEvents.clear()
+            changedSources.clear()
+            lastFocusedNodeId = null
+        }
+
         fun onStableState(snapshot: UiTreeCapture.Snapshot) {
             val before = lastStableStateId
             val beforePayload = lastStablePayload
@@ -441,6 +450,13 @@ class CaptureCoordinator(
         repo.beginActiveOperation("CAPTURE", session.id)
         activePackage.set(session.packageName)
         activeSession.set(session.id)
+        // Start from nothing. These carried across sessions, so the first stable
+        // state of a new run was diffed against the last state of the previous
+        // one — a different screen, and often a different app entirely. That is
+        // how a Demo Shop test acquired `add_task_fab` from Demo Tasks as its
+        // first step. A session's first observation has no predecessor, and
+        // pretending otherwise invents an interaction that never happened.
+        resetDiffBaseline()
         // Sink stable states from the accessibility service into Room and echo
         // a CAPTURE_PROGRESS ping so the JS layer sees liveness.
         stateSink = { snapshot ->
