@@ -22,6 +22,9 @@ const createStyles = makeStyles(({ colors, elevation }: AppTheme) => ({
   },
   row: {
     ...layout.row,
+    // Three labelled actions overflow a phone width (Evidence does this). Wrap
+    // to a second line rather than letting the last one run off the edge.
+    flexWrap: "wrap",
     minHeight: 72,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,

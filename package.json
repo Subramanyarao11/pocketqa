@@ -17,6 +17,9 @@
     "lint": "npm run lint --workspace=apps/pocketqa-mobile",
     "maestro:canonical": "echo 'Maestro canonical tests placeholder'"
   },
+  "devDependencies": {
+    "@react-native/metro-config": "0.87.1"
+  },
   "engines": {
     "node": ">= 22.11.0"
   }

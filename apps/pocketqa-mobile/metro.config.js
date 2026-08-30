@@ -12,6 +12,11 @@ const workspaceRoot = path.resolve(__dirname, "../..");
 const config = {
   watchFolders: [workspaceRoot],
   resolver: {
+    // react-native 0.87 ships internal packages (@react-native/asset-utils,
+    // for one) that declare only `exports`, with no `main`. The installed
+    // metro-config still defaults this off, so Metro falls back to `main`,
+    // resolves `index`, finds nothing, and the whole bundle fails.
+    unstable_enablePackageExports: true,
     nodeModulesPaths: [
       path.resolve(__dirname, "node_modules"),
       path.resolve(workspaceRoot, "node_modules"),
