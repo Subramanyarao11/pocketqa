@@ -67,6 +67,15 @@ class CaptureCoordinator(
             val action: String,
             val label: String,
             val nodeId: String?,
+            /**
+             * Identity of the event's source node, independent of any tree.
+             * A path id is only meaningful against the tree it was walked from,
+             * so when the platform reports a click while a different window is
+             * active the id resolves to nothing and the step lands with no
+             * target at all — while still claiming the platform told us, at
+             * confidence 1.0. The fingerprint survives that.
+             */
+            val fingerprint: String? = null,
             val input: String?,
             val at: Long,
             /** How the target was determined — CAP-06. `event` means the platform
@@ -106,17 +115,32 @@ class CaptureCoordinator(
             val cd = src?.contentDescription?.toString()
             val label = text ?: cd ?: "Unknown target"
             val nodeId = pathIdFor(root, src)
+            val fp = UiTreeCapture.fingerprintOf(src)
+            // A click whose source is gone tells us that something was clicked
+            // and nothing about what. Recording it as an `event` step yields a
+            // target-less step that still claims the platform identified it, at
+            // confidence 1.0 — a contradiction the review gate then has to
+            // explain. Declining here lets the state diff take over, which is
+            // precisely the situation inference exists for.
+            //
+            // It is not hypothetical: a RecyclerView that rebuilds its rows on
+            // change detaches the clicked view before the service can read it.
+            if (src == null &&
+                (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED ||
+                    event.eventType == AccessibilityEvent.TYPE_VIEW_LONG_CLICKED)
+            ) return null
+
             return when (event.eventType) {
                 AccessibilityEvent.TYPE_VIEW_CLICKED -> PendingEvent(
-                    action = "tap", label = label, nodeId = nodeId, input = null,
+                    action = "tap", label = label, nodeId = nodeId, fingerprint = fp, input = null,
                     at = System.currentTimeMillis(),
                 )
                 AccessibilityEvent.TYPE_VIEW_LONG_CLICKED -> PendingEvent(
-                    action = "longPress", label = label, nodeId = nodeId, input = null,
+                    action = "longPress", label = label, nodeId = nodeId, fingerprint = fp, input = null,
                     at = System.currentTimeMillis(),
                 )
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> PendingEvent(
-                    action = "typeText", label = label, nodeId = nodeId,
+                    action = "typeText", label = label, nodeId = nodeId, fingerprint = fp,
                     input = src?.text?.toString() ?: event.text?.joinToString(),
                     at = System.currentTimeMillis(),
                 )
@@ -436,6 +460,7 @@ class CaptureCoordinator(
                 action = pending.action,
                 label = pending.label,
                 nodeId = pending.nodeId,
+                fingerprint = pending.fingerprint,
                 input = pending.input,
                 beforeStateId = before,
                 afterStateId = after,

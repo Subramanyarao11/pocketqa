@@ -168,6 +168,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         beforeStateId: String,
         afterStateId: String,
         at: Long,
+        fingerprint: String? = null,
         method: String = "event",
         confidence: Double = 1.0,
         signals: List<String> = emptyList(),
@@ -177,6 +178,9 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             put("action", JsonPrimitive(action))
             put("label", JsonPrimitive(label))
             if (nodeId != null) put("nodeId", JsonPrimitive(nodeId))
+            // Tree-independent identity, used when the path id cannot be
+            // resolved against the state we captured.
+            if (fingerprint != null) put("fingerprint", JsonPrimitive(fingerprint))
             if (input != null) put("input", JsonPrimitive(input))
             put("beforeStateId", JsonPrimitive(beforeStateId))
             put("afterStateId", JsonPrimitive(afterStateId))
@@ -620,9 +624,19 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
                     .takeIf { it.isNotEmpty() }
                     ?.let { dao.uiState(it) }
                     ?.let { JsonBridge.json.parseToJsonElement(it.payload).jsonObject }
-                val targetNode = beforeState?.get("nodes")?.jsonArray
-                    ?.map { it.jsonObject }
+                val beforeNodes = beforeState?.get("nodes")?.jsonArray?.map { it.jsonObject }
+                // Path id first; fingerprint when the platform reported a click
+                // whose source could not be located in the tree we captured.
+                // Without this the step compiles with no selector at all while
+                // still claiming the platform identified it, at confidence 1.0.
+                val targetFingerprint = ev["fingerprint"]?.jsonPrimitive?.contentOrNull
+                val targetNode = beforeNodes
                     ?.firstOrNull { it["nodeId"]?.jsonPrimitive?.contentOrNull == targetNodeId }
+                    ?: targetFingerprint?.let { fp ->
+                        beforeNodes?.firstOrNull {
+                            it["fingerprint"]?.jsonPrimitive?.contentOrNull == fp
+                        }
+                    }
 
                 val attribution = ev["attribution"]?.jsonObject
                 val confidence = attribution?.get("confidence")?.jsonPrimitive?.doubleOrNull ?: 1.0
@@ -752,10 +766,27 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             }
         }
         val nodes = state?.get("nodes")?.jsonArray?.map { it.jsonObject } ?: emptyList()
+        // Ids are ranked on uniqueness, exactly like labels and text below.
+        // An id is the strongest anchor only while it names one control: a
+        // RecyclerView reuses one layout for every row, so `task_checkbox` is
+        // the id of all nine checkboxes at once. Ranked on strategy alone it
+        // beat a content description that identified the row exactly, and the
+        // replay would then hard-stop as ambiguous — technically honest, and it
+        // would have made every list-based app impossible to record.
         val testId = node["testId"]?.jsonPrimitive?.contentOrNull
-        if (!testId.isNullOrEmpty()) push("testId", testId, 0.98, "Explicit testId \"$testId\" is the most stable anchor.")
+        if (!testId.isNullOrEmpty()) {
+            val dupes = nodes.count { it["testId"]?.jsonPrimitive?.contentOrNull == testId }
+            push("testId", testId, if (dupes <= 1) 0.98 else 0.45,
+                if (dupes <= 1) "Explicit testId \"$testId\" is the most stable anchor."
+                else "testId \"$testId\" is shared by $dupes nodes and cannot address one.")
+        }
         val resourceId = node["resourceId"]?.jsonPrimitive?.contentOrNull
-        if (!resourceId.isNullOrEmpty()) push("resourceId", resourceId, 0.94, "Resource ID \"$resourceId\" is emitted by the app build.")
+        if (!resourceId.isNullOrEmpty()) {
+            val dupes = nodes.count { it["resourceId"]?.jsonPrimitive?.contentOrNull == resourceId }
+            push("resourceId", resourceId, if (dupes <= 1) 0.94 else 0.42,
+                if (dupes <= 1) "Resource ID \"$resourceId\" is emitted by the app build."
+                else "Resource ID \"$resourceId\" is shared by $dupes nodes and cannot address one.")
+        }
         val cd = node["contentDescription"]?.jsonPrimitive?.contentOrNull
         if (!cd.isNullOrEmpty()) {
             val dupes = nodes.count { it["contentDescription"]?.jsonPrimitive?.contentOrNull == cd }

@@ -16,6 +16,13 @@
   operator explicitly started against an app they explicitly chose, so the scope
   is now per session instead of per build.
 
+  `flagReportViewIds` is what populates `AccessibilityNodeInfo.viewIdResourceName`.
+  Without it that field is null for every classic Android View, so PocketQA saw
+  no resource ids at all on a View/XML app and had to fall back to labels. It
+  went unnoticed because Compose surfaces `testTagsAsResourceId` through a
+  different route, and every target until now was Compose. It reports ids the
+  app already publishes; it grants no access to content we could not read.
+
   `flagRetrieveInteractiveWindows` is what populates `getWindows()`. Without it
   the only way to reach a tree is `rootInActiveWindow`, which is null whenever
   something other than the app owns the active window — the soft keyboard after
@@ -33,7 +40,7 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:accessibilityEventTypes="typeWindowContentChanged|typeWindowStateChanged|typeViewClicked|typeViewFocused|typeViewTextChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagRetrieveInteractiveWindows"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
     android:notificationTimeout="80"
     android:canRetrieveWindowContent="true"
     android:canRequestTouchExplorationMode="false"

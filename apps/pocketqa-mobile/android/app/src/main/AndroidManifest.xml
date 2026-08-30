@@ -6,8 +6,26 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!--
+      Package visibility for the target picker.
+
+      From Android 11 `queryIntentActivities` returns only packages this app can
+      see, so naming Demo Shop here made it the only target that could ever
+      appear — however dynamic PolicyEngine.allowlist looked. Newly installed
+      apps were simply invisible, which is why a freshly installed target never
+      showed up in the picker.
+
+      An intent query for launcher activities is the declaration that matches
+      what the allowlist actually offers: every app with a launcher entry. It
+      needs no QUERY_ALL_PACKAGES permission, and it grants visibility only —
+      scope is still enforced at runtime by isTargetable() and by the
+      per-session target the operator explicitly chooses.
+    -->
     <queries>
-        <package android:name="com.techphantoms.pocketqa.demoshop" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

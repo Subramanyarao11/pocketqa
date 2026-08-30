@@ -8,6 +8,15 @@
         <meta-data
             android:name="pocketqa.fixtures"
             android:value="reset,many-tasks,all-done" />
+        <!--
+          How PocketQA asks this app to reach a fixture. Declaring the URI here
+          keeps the deep link app-owned: the capture and replay engines never
+          need to know this app's scheme, and setPackage stops anything else
+          claiming the link.
+        -->
+        <meta-data
+            android:name="pocketqa.fixtureUriTemplate"
+            android:value="demotasks://reset?fixture={fixture}" />
 
         <activity
             android:name=".MainActivity"
