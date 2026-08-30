@@ -7,7 +7,9 @@ export type RootStackParamList = {
   Readiness: { returnTo?: "Intent" | "Settings" } | undefined;
   Home: undefined;
   Intent: { duplicateFromTestId?: string } | undefined;
-  CaptureReady: { intentId: string };
+  // targetName travels with the intent so the pre-capture screen can name the
+  // app the operator actually chose instead of assuming Demo Shop.
+  CaptureReady: { intentId: string; targetName?: string };
   CaptureStatus: { sessionId: string };
   CompileProgress: { compileJobId: string };
   ReviewTest: { draftId: string };

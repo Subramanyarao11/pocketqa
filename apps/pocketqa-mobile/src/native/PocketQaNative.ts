@@ -24,7 +24,10 @@ interface EventShape {
 function buildRealFacade(mod: NonNullable<typeof NativePocketQaModule>): PocketQaNativeApi {
   const emitter = new NativeEventEmitter(mod as unknown as EventShape as never);
   const listener = (cb: (e: PocketQaEvent) => void) => {
-    const sub = emitter.addListener("PocketQaEvent", cb);
+    // NativeEventEmitter types its handler as (...args: readonly Object[]);
+    // the cast is at the boundary where the payload shape is asserted, not
+    // spread through the callers.
+    const sub = emitter.addListener("PocketQaEvent", (e) => cb(e as PocketQaEvent));
     return () => sub.remove();
   };
 

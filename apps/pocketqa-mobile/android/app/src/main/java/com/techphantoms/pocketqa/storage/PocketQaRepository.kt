@@ -770,13 +770,30 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         ranked: List<JsonObject>,
         provenance: JsonObject,
     ) = runBlocking {
-        if (ranked.isEmpty()) return@runBlocking
         val row = dao.draft(draftId) ?: return@runBlocking
         val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
         val existing = current["finalAssertions"]?.jsonArray ?: JsonArray(emptyList())
         // Never overwrite user-added assertions.
         if (existing.isNotEmpty() &&
             existing.any { it.jsonObject["proposed"]?.jsonPrimitive?.contentOrNull != "true" }) {
+            return@runBlocking
+        }
+        // An empty selection is an answer, not an absence. The model declining —
+        // which it does honestly when the evidence does not support the intent —
+        // used to return here before writing provenance, so review could not
+        // tell "the model ran and found nothing" from "no model ran", and the
+        // screen showed the same text as a fully offline compile. The proposal
+        // list stays empty; only the record of having asked is written.
+        if (ranked.isEmpty()) {
+            val declined = JsonObject(
+                current + mapOf("aiFinalAssertionProvenance" to provenance) +
+                    connectedDraftFields(provenance)
+            )
+            dao.upsertDraft(row.copy(
+                payload = declined.toString(),
+                revision = row.revision + 1,
+                updatedAt = System.currentTimeMillis(),
+            ))
             return@runBlocking
         }
         val proposals = buildJsonArray {

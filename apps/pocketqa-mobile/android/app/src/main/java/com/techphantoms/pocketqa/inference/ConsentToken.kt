@@ -38,11 +38,21 @@ sealed class ConsentToken(val serverState: String) {
      */
     object Denied : ConsentToken(serverState = "DENIED")
 
+    /**
+     * Fail loudly when a token is handed to a task it was not granted for.
+     *
+     * Scope only — whether the network may be used at all is
+     * [isNetworkPermitted]. Denied used to fail here too, which made a refusal
+     * throw out of TaskClient.run instead of returning the deterministic
+     * result its own contract promises ("a failure is a Result with value ==
+     * null, never an exception"), and left the Denied branch further down that
+     * function unreachable. A refusal is an ordinary outcome; only a mismatched
+     * token is a broken consent surface.
+     */
     fun assertMatches(taskId: String) {
         val ok = when (this) {
             is GrantedForOperation -> this.taskId == taskId
-            NotRequired -> true
-            Denied -> false
+            NotRequired, Denied -> true
         }
         require(ok) { "ConsentToken does not authorise task \"$taskId\"" }
     }

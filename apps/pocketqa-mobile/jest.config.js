@@ -1,8 +1,18 @@
+// React Native stopped shipping a bundled jest preset; from 0.87 it lives in
+// @react-native/jest-preset. `preset: "react-native"` resolved to nothing, so
+// all eight suites failed to *start* — the runner reported no failures because
+// it never ran a single test.
+const preset = require("@react-native/jest-preset");
+
 module.exports = {
-  preset: "react-native",
-  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "json"],
+  ...preset,
+  moduleFileExtensions: ["ts", "tsx", "js", "jsx", "mjs", "json"],
   transform: {
-    "^.+\\.(ts|tsx|js|jsx)$": [
+    ...preset.transform,
+    // `.mjs` included deliberately: lucide-react-native's `react-native` entry
+    // point is an ESM bundle, so tests must transform the same build the app
+    // ships rather than diverting to its CommonJS copy.
+    "^.+\\.(ts|tsx|js|jsx|mjs)$": [
       "babel-jest",
       {
         presets: ["module:@react-native/babel-preset"],
@@ -10,10 +20,13 @@ module.exports = {
       },
     ],
   },
+  // Reanimated, Gesture Handler and Worklets ship untranspiled ESM.
   transformIgnorePatterns: [
-    "node_modules/(?!(react-native|@react-native|@react-navigation|yaml)/)",
+    "node_modules/(?!((jest-)?react-native|@react-native(-community)?|@react-navigation|react-native-reanimated|react-native-gesture-handler|react-native-worklets|react-native-safe-area-context|react-native-screens|react-native-svg|lucide-react-native|yaml)/)",
   ],
+  // Spread, not replaced: the preset maps `react-native` itself.
   moduleNameMapper: {
+    ...preset.moduleNameMapper,
     "^@app/(.*)$": "<rootDir>/src/app/$1",
     "^@components$": "<rootDir>/src/components/index.ts",
     "^@components/(.*)$": "<rootDir>/src/components/$1",
@@ -29,6 +42,10 @@ module.exports = {
     "^@theme$": "<rootDir>/src/theme/index.ts",
     "^@theme/(.*)$": "<rootDir>/src/theme/$1",
   },
-  setupFiles: ["<rootDir>/jest.setup.js"],
+  setupFiles: [
+    ...(preset.setupFiles ?? []),
+    "<rootDir>/src/test/jestSetup.js",
+    "<rootDir>/jest.setup.js",
+  ],
   testMatch: ["<rootDir>/src/**/__tests__/**/*.test.ts", "<rootDir>/src/**/__tests__/**/*.test.tsx"],
 };

@@ -51,8 +51,10 @@ class CompileCoordinator(
         // failure, timeout, or when the endpoint isn't configured (§3.1).
         val draftId = repo.draftIdForJob(jobId) ?: return jobId
         runBlocking {
-            // Concurrent so a slow / dead endpoint doesn't stall the bridge
-            // for the sum of the two timeouts. Total worst case ~4s.
+            // Concurrent so a slow or dead endpoint costs the larger of the two
+            // budgets rather than their sum. Worst case is therefore the
+            // longest single call, currently 7s — not the ~4s an earlier note
+            // here claimed, which had drifted from the timeouts actually passed.
             awaitAll(
                 async { proposeName(draftId) },
                 async { proposeFinalAssertions(draftId) },
@@ -161,7 +163,23 @@ class CompileCoordinator(
                 "serviceKind" to (proposal["kind"] ?: JsonPrimitive("VISIBLE")),
             ))
         }
-        if (filtered.isEmpty()) return
+        if (filtered.isEmpty()) {
+            // The model ran and selected nothing — which it does honestly when
+            // the evidence does not support the intent, and which redaction can
+            // cause by stripping the intent itself. Returning here left no
+            // record that we asked, so review showed the same "add an
+            // assertion" prompt as a fully offline compile and the operator had
+            // no way to tell the two apart.
+            repo.applyAiFinalAssertionProposals(
+                draftId,
+                emptyList(),
+                buildJsonObject {
+                    put("selection", compileRes.provenance.toJsonObject())
+                    put("usedModel", JsonPrimitive(compileRes.provenance.usedModel))
+                },
+            )
+            return
+        }
 
         val rankReq = buildJsonObject {
             put("intent", JsonPrimitive(intent))

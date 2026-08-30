@@ -16,12 +16,16 @@ import { type ScreenProps } from "@navigation";
 export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureReady">) {
   const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
+  // Named after the app the operator chose. Both of these read "Demo Shop"
+  // before, which was wrong on every other target and quietly implied PocketQA
+  // only works against its own sample app.
+  const target = route.params.targetName ?? "target app";
   return (
     <>
       <TopBar title="Ready to capture" subtitle="Review scope before switching apps" onBack={() => navigation.goBack()} />
       <AppScreen>
         <Card tone="callout">
-          <Text style={typography.h2}>Before we switch to the Demo Shop</Text>
+          <Text style={typography.h2}>Before we switch to {target}</Text>
           <Text style={typography.bodyMuted}>
             A native overlay (or persistent notification) will show recording state, step count,
             Pause, Finish, and Stop while you demonstrate the flow.
@@ -41,7 +45,7 @@ export function CaptureReadyScreen({ navigation, route }: ScreenProps<"CaptureRe
         </Card>
         <View style={styles.rowStatus}>
           <StatusPill label="Service enabled" tone="lime" />
-          <StatusPill label="Demo Shop reset" tone="cyan" />
+          <StatusPill label={`${target} reset`} tone="cyan" />
           <StatusPill label="Redaction on" tone="lime" />
         </View>
       </AppScreen>

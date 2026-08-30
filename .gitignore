@@ -95,3 +95,6 @@ apps/pocketqa-mobile/android/app/src/main/assets/index.android.bundle
 apps/pocketqa-mobile/android/app/src/main/assets/index.android.bundle.map
 apps/pocketqa-mobile/android/app/src/main/res/drawable-*/
 apps/pocketqa-mobile/android/app/src/main/res/raw/
+
+# Generated diffs kept out of the tree; use git format-patch when one is needed.
+*.patch

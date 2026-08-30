@@ -100,6 +100,7 @@ class TaskClient(
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
+
     /**
      * Run a task against the ai-lab service.
      *
@@ -126,7 +127,12 @@ class TaskClient(
         }
 
         val redactedRequest = redactRequest(request)
-        val body = redactedRequest.payload.toString()
+        // Fail closed. If redaction produced something we cannot re-parse we do
+        // not know what is in it, and the one path where the privacy control
+        // misbehaves must not be the path that sends the original payload.
+        val redactedPayload = redactedRequest.payload
+            ?: return@withContext Result(value = null, provenance = Provenance.deterministic(consent))
+        val body = redactedPayload.toString()
             .toRequestBody("application/json".toMediaTypeOrNull())
         // A granted per-operation token is the explicit opt-in required by the
         // AI-Lab route for connected inference. Tasks that are marked
@@ -236,15 +242,18 @@ class TaskClient(
         val jsonText = request.toString()
         val redacted = redactor(jsonText)
         if (redacted.changed) changed = true
+        // null, never the original: see the call site. Redaction runs over the
+        // serialised request, so a pattern that damages the JSON structure would
+        // otherwise be "recovered" by sending the unredacted payload instead.
         val out = try {
             json.parseToJsonElement(redacted.text).jsonObject
         } catch (_: Throwable) {
-            request
+            null
         }
         return RedactedRequest(out, changed)
     }
 
-    private data class RedactedRequest(val payload: JsonObject, val changed: Boolean)
+    private data class RedactedRequest(val payload: JsonObject?, val changed: Boolean)
 
     companion object {
         private fun quoteOrNull(s: String?): String = if (s == null) "null" else buildString {
