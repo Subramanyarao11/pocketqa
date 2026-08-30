@@ -7,7 +7,9 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.OperationLock
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
+import com.techphantoms.pocketqa.inference.ConsentToken
 import com.techphantoms.pocketqa.inference.InferenceRouter
+import com.techphantoms.pocketqa.inference.TaskClient
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.storage.JsonBridge
 import com.techphantoms.pocketqa.storage.PocketQaRepository
@@ -35,11 +37,31 @@ import java.util.concurrent.ConcurrentHashMap
  * is a MissionSummary with an optional proposal that the user must approve
  * in a subsequent review step.
  */
+/**
+ * Mission bounds, parsed defensively.
+ *
+ * Separated from the agent so the bridge-double case is unit tested: the
+ * operator's ceiling silently becoming a larger default is not something to
+ * discover on a device.
+ */
+internal object ExplorerBounds {
+    const val DEFAULT_ACTIONS = 5
+    const val DEFAULT_SECONDS = 90
+
+    /** Truncates rather than rounds: a budget is a ceiling, not a suggestion. */
+    private fun bound(mission: JsonObject, key: String): Int? =
+        mission[key]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull()?.toInt()
+
+    fun actions(mission: JsonObject): Int = bound(mission, "maxActions") ?: DEFAULT_ACTIONS
+    fun seconds(mission: JsonObject): Int = bound(mission, "maxDurationSeconds") ?: DEFAULT_SECONDS
+}
+
 class ExplorerAgent(
     private val ctx: ReactApplicationContext,
     private val repo: PocketQaRepository,
     private val policy: PolicyEngine,
     private val inference: InferenceRouter,
+    private val tasks: TaskClient,
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val stopSignals = ConcurrentHashMap<String, Boolean>()
@@ -65,8 +87,13 @@ class ExplorerAgent(
 
     private suspend fun runMission(missionId: String, mission: JsonObject) {
         val packageName = mission["packageAllowlist"]?.jsonArray?.firstOrNull()?.jsonPrimitive?.contentOrNull.orEmpty()
-        val maxActions = mission["maxActions"]?.jsonPrimitive?.content?.toIntOrNull() ?: 5
-        val maxSeconds = mission["maxDurationSeconds"]?.jsonPrimitive?.content?.toIntOrNull() ?: 90
+        // The React Native bridge carries every JS number as a Double, so these
+        // arrive as "3.0" and "60.0". toIntOrNull() rejects both, which meant an
+        // approved mission of 3 actions in 60s silently ran with the defaults of
+        // 5 and 90 — the operator's bound was not the executor's bound, which is
+        // the whole safety claim of a bounded agent.
+        val maxActions = ExplorerBounds.actions(mission)
+        val maxSeconds = ExplorerBounds.seconds(mission)
         val startedAt = System.currentTimeMillis()
         val events = mutableListOf<JsonObject>()
 
@@ -106,7 +133,14 @@ class ExplorerAgent(
                 proposalStateId = snapshot.stateId
                 break
             }
-            val ranked = rankCandidates(candidates)
+            val goal = mission["goal"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val ranked = rankCandidates(candidates, missionId, goal, maxActions - actions)
+            if (ranked.isEmpty()) {
+                events += ev("stop", "Model requested early stop.")
+                proposal = buildProposal(state, snapshot.stateId, mission)
+                proposalStateId = snapshot.stateId
+                break
+            }
             val next = ranked.first()
             val nextNodeId = next["nodeId"]?.jsonPrimitive?.contentOrNull ?: break
             visitedNodeIds += nextNodeId
@@ -143,6 +177,7 @@ class ExplorerAgent(
             put("mission", mission)
             put("events", JsonArray(events))
             if (proposal != null) put("proposal", proposal!!)
+            lastRankerProvenance?.let { put("rankerProvenance", it) }
         }
         // Persist the summary so a subsequent getMission() call after
         // MISSION_FINISHED can return the events + proposal.
@@ -152,6 +187,9 @@ class ExplorerAgent(
         repo.endActiveOperation()
         stopSignals.remove(missionId)
     }
+
+    /** Provenance of the most recent ranker call, surfaced in the summary. */
+    @Volatile private var lastRankerProvenance: JsonObject? = null
 
     // ---------- helpers ----------
 
@@ -168,11 +206,67 @@ class ExplorerAgent(
         }
     }
 
-    private fun rankCandidates(candidates: List<JsonObject>): List<JsonObject> {
+    /**
+     * AI-6 rank_explorer_candidate — the model narrows a safe set, it never
+     * widens one. Every candidate handed here has already been classified by
+     * PolicyEngine as allowlisted, visible, non-sensitive. The model can
+     * return a re-ordering that is a *subset* of these IDs; anything
+     * unfamiliar is rejected server-side and we fall back to the deterministic
+     * ordering. The model may also return `stopEarly: true`, which we honour
+     * as an immediate STOP — the caller checks the returned list emptiness.
+     */
+    private suspend fun rankCandidates(
+        candidates: List<JsonObject>,
+        missionId: String,
+        goal: String,
+        remainingActions: Int,
+    ): List<JsonObject> {
         val ids = candidates.mapNotNull { it["nodeId"]?.jsonPrimitive?.contentOrNull }
-        val orderedIds = inference.rankCandidates("explore next", ids)
+        if (ids.isEmpty()) return emptyList()
+
+        val request = buildJsonObject {
+            put("goal", JsonPrimitive(goal))
+            put("stateSummary", JsonPrimitive(
+                candidates.mapNotNull { it["text"]?.jsonPrimitive?.contentOrNull }
+                    .take(5).joinToString(" · ")
+            ))
+            put("safeCandidates", buildJsonArray {
+                for (c in candidates) add(buildJsonObject {
+                    put("proposalId", c["nodeId"] ?: JsonPrimitive(""))
+                    put("label", c["text"] ?: c["contentDescription"] ?: JsonPrimitive("Control"))
+                    put("risk", JsonPrimitive("LOW"))
+                    put("novelty", JsonPrimitive(1.0))
+                    put("reversibleLikelihood", JsonPrimitive(0.8))
+                    put("selectorStability", JsonPrimitive(
+                        if (c["testId"] != null || c["resourceId"] != null) 0.95 else 0.7
+                    ))
+                    put("visitCount", JsonPrimitive(0))
+                })
+            })
+            put("remainingActions", JsonPrimitive(remainingActions.coerceIn(0, 5)))
+        }
+        val result = tasks.run(
+            taskId = "rank_explorer_candidate",
+            request = request,
+            consent = ConsentToken.GrantedForOperation("rank_explorer_candidate", missionId),
+            timeoutMs = 5_000,
+        )
+        // The review screen claims "the model ranks only policy-filtered
+        // candidates". That was boilerplate text with nothing behind it: the
+        // provenance came back on every call and was dropped, so a mission could
+        // not show which model made the choice — or whether one was consulted at
+        // all. Keep it for the summary.
+        lastRankerProvenance = result.provenance.toJsonObject()
+        val choice = result.value?.get("choice")?.jsonPrimitive?.contentOrNull
+        if (choice == "STOP") return emptyList()
+        val orderedIds = if (choice != null) {
+            listOf(choice) + ids.filter { it != choice }
+        } else inference.rankCandidates("explore next", ids)
+        // Never widen the set: reject any id we didn't offer.
+        val allowed = ids.toSet()
+        val filtered = orderedIds.filter { it in allowed }
         val byId = candidates.associateBy { it["nodeId"]?.jsonPrimitive?.contentOrNull }
-        return orderedIds.mapNotNull { byId[it] }.ifEmpty { candidates }
+        return filtered.mapNotNull { byId[it] }.ifEmpty { candidates }
     }
 
     private fun buildProposal(state: JsonObject, stateId: String, mission: JsonObject): JsonObject {

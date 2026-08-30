@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.jsonArray
@@ -87,6 +88,11 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             connected.putMap(p, entry)
         }
         map.putMap("connected", connected)
+        val aiLab = Arguments.createMap()
+        val endpoint = vault.readEndpoint("aiLab")
+        aiLab.putBoolean("configured", !endpoint.isNullOrBlank())
+        if (endpoint != null) aiLab.putString("displayHost", displayEndpoint(endpoint))
+        map.putMap("aiLab", aiLab)
         // Read from the device rather than a build-time constant, so readiness
         // reports what the operator can actually target.
         val apps = policy.allowlist(ctx)
@@ -98,6 +104,24 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
         map.putArray("packageAllowlist", al)
         map
     }
+
+    private fun displayEndpoint(url: String): String {
+        val trimmed = url.trim().removeSuffix("/")
+        val host = trimmed.substringAfter("://", trimmed)
+        return if (host.length <= 32) host else host.take(29) + "…"
+    }
+
+    fun aiLabEndpoint(): String? = vault.readEndpoint("aiLab")
+
+    fun saveAiLabEndpoint(url: String): WritableMap {
+        val display = vault.storeEndpoint("aiLab", url)
+        val out = Arguments.createMap()
+        out.putBoolean("configured", true)
+        out.putString("displayHost", display)
+        return out
+    }
+
+    fun deleteAiLabEndpoint() { vault.deleteEndpoint("aiLab") }
 
     fun setOfflineMode(offline: Boolean) {
         prefs.edit().putBoolean("offlineMode", offline).apply()
@@ -490,7 +514,46 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
             else -> "Open the evidence trail to inspect the failing state before repairing."
         }
         out.putString("suggestion", suggestion)
+
+        // AI-1 explain_failure — optional additional sentence, always
+        // attributed, never replacing the deterministic suggestion above.
+        failure["aiExplanation"]?.jsonPrimitive?.contentOrNull?.let {
+            out.putString("aiExplanation", it)
+        }
+        failure["aiExplanationProvenance"]?.jsonObject?.let {
+            out.putMap("aiExplanationProvenance", JsonBridge.toWritableMap(it.toString()))
+        }
+        // AI-4 repair_selector — optional model alternative surfaced next to
+        // the deterministic Apply button. Applied only via an explicit tap.
+        payload["aiSelectorRepair"]?.jsonObject?.let { repair ->
+            val map = Arguments.createMap()
+            map.putString("stepId", repair["stepId"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            map.putString("strategy", repair["strategy"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            map.putString("value", repair["value"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            map.putDouble("confidence", repair["confidence"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0)
+            repair["provenance"]?.jsonObject?.let {
+                map.putMap("provenance", JsonBridge.toWritableMap(it.toString()))
+            }
+            out.putMap("aiSelectorRepair", map)
+        }
+        // AI-5 classify_flake — annotates but never suppresses the failure.
+        payload["aiFlake"]?.jsonObject?.let { flake ->
+            val map = Arguments.createMap()
+            map.putString("verdict", flake["verdict"]?.jsonPrimitive?.contentOrNull.orEmpty())
+            flake["reason"]?.jsonPrimitive?.contentOrNull?.let { map.putString("reason", it) }
+            flake["provenance"]?.jsonObject?.let {
+                map.putMap("provenance", JsonBridge.toWritableMap(it.toString()))
+            }
+            out.putMap("aiFlake", map)
+        }
         out
+    }
+
+    /** Read the persisted UI state so the repair verifier can double-check the AI proposal. */
+    fun uiStateRaw(stateId: String): JsonObject? = runBlocking {
+        dao.uiState(stateId)?.payload?.let {
+            JsonBridge.json.parseToJsonElement(it).jsonObject
+        }
     }
 
     /**
@@ -588,6 +651,7 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
     fun deleteTest(id: String) = runBlocking { dao.deleteApproved(id) }
     fun deleteAll() = runBlocking {
         for (p in dao.providers()) vault.delete(p.provider)
+        vault.deleteEndpoint("aiLab")
         dao.clearConsent(); dao.clearProviders(); dao.clearIntents()
         dao.clearSessions(); dao.clearEvents(); dao.clearStates()
         dao.clearJobs(); dao.clearDrafts(); dao.clearApproved()
@@ -596,6 +660,310 @@ class PocketQaRepository(private val ctx: ReactApplicationContext) {
 
     /** Read the plaintext API key for a provider — only the InferenceRouter uses this. */
     fun providerKey(provider: String): String? = vault.read(provider)
+
+    // -- AI proposal surface (§4 of the wiring spec) ----------------------------
+
+    fun draftIdForJob(jobId: String): String? = runBlocking { dao.compileJob(jobId)?.draftId }
+
+    fun readDraftJson(draftId: String): JsonObject? = runBlocking {
+        val payload = dao.draft(draftId)?.payload ?: return@runBlocking null
+        JsonBridge.json.parseToJsonElement(payload).jsonObject
+    }
+
+    /** Keep the user-facing offline/connected labels aligned with provenance. */
+    private fun aiWasUsed(provenance: JsonObject): Boolean {
+        if (provenance["usedModel"]?.jsonPrimitive?.booleanOrNull == true ||
+            provenance["networkUsed"]?.jsonPrimitive?.booleanOrNull == true) {
+            return true
+        }
+        return listOf("selection", "ranking").any { key ->
+            provenance[key]?.let { element ->
+                runCatching { aiWasUsed(element.jsonObject) }.getOrDefault(false)
+            } == true
+        }
+    }
+
+    private fun connectedDraftFields(provenance: JsonObject): Map<String, kotlinx.serialization.json.JsonElement> =
+        if (aiWasUsed(provenance)) mapOf(
+            "compiledBy" to JsonPrimitive("connected-assist"),
+            "offlineOnly" to JsonPrimitive(false),
+        ) else emptyMap()
+
+    /**
+     * AI-3 name_test — persist a proposed test name alongside its provenance
+     * so the review screen can render "Named by google/gemini-2.5-flash".
+     * Only writes if the current name still looks auto-generated.
+     */
+    fun applyAiName(draftId: String, name: String, provenance: JsonObject) = runBlocking {
+        val row = dao.draft(draftId) ?: return@runBlocking
+        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val existing = current["name"]?.jsonPrimitive?.contentOrNull
+        val looksAuto = existing.isNullOrBlank() || existing == "Untitled" ||
+            existing == current["intent"]?.jsonPrimitive?.contentOrNull ||
+            existing.startsWith("draft_")
+        if (!looksAuto) return@runBlocking
+        val next = JsonObject(current + mapOf(
+            "name" to JsonPrimitive(name),
+            "aiName" to buildJsonObject {
+                put("value", JsonPrimitive(name))
+                put("provenance", provenance)
+            },
+        ) + connectedDraftFields(provenance))
+        dao.upsertDraft(row.copy(
+            name = name,
+            payload = next.toString(),
+            revision = row.revision + 1,
+            updatedAt = System.currentTimeMillis(),
+        ))
+    }
+
+    /**
+     * AI-2 candidate builder — walk visible text from the last observed state
+     * and every meaningful captured assertion, then hand a stable id/target
+     * list to compile_intent. The task service is prevented from inventing:
+     * every id it returns must be one of these.
+     */
+    fun candidateAssertionsForDraft(draftId: String): List<JsonObject> = runBlocking {
+        val row = dao.draft(draftId) ?: return@runBlocking emptyList()
+        val draft = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val steps = draft["steps"]?.jsonArray?.map { it.jsonObject } ?: return@runBlocking emptyList()
+        val lastStep = steps.lastOrNull() ?: return@runBlocking emptyList()
+        val lastStateId = lastStep["afterStateId"]?.jsonPrimitive?.contentOrNull
+        val lastState = lastStateId?.let { dao.uiState(it) }
+            ?.let { JsonBridge.json.parseToJsonElement(it.payload).jsonObject }
+        val out = mutableListOf<JsonObject>()
+        var idx = 1
+        // Every visible, non-sensitive text becomes a textVisible candidate.
+        lastState?.get("nodes")?.jsonArray
+            ?.map { it.jsonObject }
+            ?.filter {
+                it["visible"]?.jsonPrimitive?.contentOrNull == "true" &&
+                    it["sensitive"]?.jsonPrimitive?.contentOrNull != "true"
+            }
+            ?.forEach { node ->
+                val text = node["text"]?.jsonPrimitive?.contentOrNull
+                    ?: node["contentDescription"]?.jsonPrimitive?.contentOrNull
+                if (!text.isNullOrBlank()) {
+                    out += buildJsonObject {
+                        put("id", JsonPrimitive("a$idx"))
+                        put("kind", JsonPrimitive("textVisible"))
+                        put("target", JsonPrimitive(text))
+                        put("expected", JsonPrimitive(text))
+                        put("sourceStateId", JsonPrimitive(lastStateId ?: ""))
+                        put("supported", JsonPrimitive(true))
+                        put("reason", JsonPrimitive("Observed in last state."))
+                    }
+                    idx++
+                }
+            }
+        out.take(12)
+    }
+
+    /**
+     * AI-2 apply — write the AI-selected/ranked candidates back to the draft
+     * as `finalAssertions` marked `proposed: true`. Approve stays blocked
+     * until at least one assertion exists in the draft (proposed or not),
+     * which matches today's rule.
+     */
+    fun applyAiFinalAssertionProposals(
+        draftId: String,
+        ranked: List<JsonObject>,
+        provenance: JsonObject,
+    ) = runBlocking {
+        val row = dao.draft(draftId) ?: return@runBlocking
+        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val existing = current["finalAssertions"]?.jsonArray ?: JsonArray(emptyList())
+        // Never overwrite user-added assertions.
+        if (existing.isNotEmpty() &&
+            existing.any { it.jsonObject["proposed"]?.jsonPrimitive?.contentOrNull != "true" }) {
+            return@runBlocking
+        }
+        // An empty selection is an answer, not an absence. The model declining —
+        // which it does honestly when the evidence does not support the intent —
+        // used to return here before writing provenance, so review could not
+        // tell "the model ran and found nothing" from "no model ran", and the
+        // screen showed the same text as a fully offline compile. The proposal
+        // list stays empty; only the record of having asked is written.
+        if (ranked.isEmpty()) {
+            val declined = JsonObject(
+                current + mapOf("aiFinalAssertionProvenance" to provenance) +
+                    connectedDraftFields(provenance)
+            )
+            dao.upsertDraft(row.copy(
+                payload = declined.toString(),
+                revision = row.revision + 1,
+                updatedAt = System.currentTimeMillis(),
+            ))
+            return@runBlocking
+        }
+        val proposals = buildJsonArray {
+            for (c in ranked) {
+                add(buildJsonObject {
+                    put("id", JsonPrimitive("assert_" + UUID.randomUUID().toString().take(8)))
+                    put("kind", c["kind"] ?: JsonPrimitive("textVisible"))
+                    put("target", c["target"] ?: JsonPrimitive(""))
+                    put("expected", c["expected"] ?: JsonPrimitive(""))
+                    put("sourceStateId", c["sourceStateId"] ?: JsonPrimitive(""))
+                    put("supported", JsonPrimitive(true))
+                    put("reason", JsonPrimitive("Proposed from your intent."))
+                    put("proposed", JsonPrimitive(true))
+                    put("aiConfidence", c["confidence"] ?: JsonPrimitive(0.0))
+                })
+            }
+        }
+        val next = JsonObject(current + mapOf(
+            "finalAssertions" to proposals,
+            "aiFinalAssertionProvenance" to provenance,
+        ) + connectedDraftFields(provenance))
+        dao.upsertDraft(row.copy(
+            payload = next.toString(),
+            revision = row.revision + 1,
+            updatedAt = System.currentTimeMillis(),
+        ))
+    }
+
+    // -- AI failure surface (§4 items 3/6/7) ------------------------------------
+
+    fun readRunJson(runId: String): JsonObject? = runBlocking {
+        dao.run(runId)?.payload?.let {
+            JsonBridge.json.parseToJsonElement(it).jsonObject
+        }
+    }
+
+    /**
+     * AI-1 explain_failure — persist the model's plain-English explanation
+     * alongside the deterministic failure summary so the evidence screen can
+     * render "Explained by google/gemini-2.5-flash". Never replaces the
+     * deterministic suggestion.
+     */
+    fun applyAiFailureExplanation(runId: String, text: String, provenance: JsonObject) = runBlocking {
+        val row = dao.run(runId) ?: return@runBlocking
+        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val result = current["result"]?.jsonObject ?: return@runBlocking
+        val failure = result["failure"]?.jsonObject ?: return@runBlocking
+        val newFailure = JsonObject(failure + mapOf(
+            "aiExplanation" to JsonPrimitive(text),
+            "aiExplanationProvenance" to provenance,
+        ))
+        val newResult = JsonObject(result + mapOf(
+            "failure" to newFailure,
+            "offline" to JsonPrimitive(!aiWasUsed(provenance)),
+        ))
+        val next = JsonObject(current + mapOf("result" to newResult))
+        dao.upsertRun(row.copy(payload = next.toString()))
+    }
+
+    /**
+     * AI-4 repair_selector — record the model's alternative alongside the
+     * deterministic suggestion, without applying it. Applying is a separate
+     * explicit tap that goes through [applyRepairAndBumpVersion].
+     */
+    fun applyAiSelectorRepairProposal(
+        runId: String,
+        stepId: String,
+        strategy: String,
+        value: String,
+        confidence: Double,
+        provenance: JsonObject,
+    ) = runBlocking {
+        val row = dao.run(runId) ?: return@runBlocking
+        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val proposal = buildJsonObject {
+            put("stepId", JsonPrimitive(stepId))
+            put("strategy", JsonPrimitive(strategy))
+            put("value", JsonPrimitive(value))
+            put("confidence", JsonPrimitive(confidence))
+            put("provenance", provenance)
+        }
+        val result = current["result"]?.jsonObject
+        val connectedResult = if (result != null && aiWasUsed(provenance)) {
+            JsonObject(result + mapOf("offline" to JsonPrimitive(false)))
+        } else result
+        val next = JsonObject(current + mapOf("aiSelectorRepair" to proposal) +
+            (connectedResult?.let { mapOf("result" to it) } ?: emptyMap()))
+        dao.upsertRun(row.copy(payload = next.toString()))
+    }
+
+    /**
+     * AI-4 apply — an approved test is immutable, so applying a repair creates
+     * a new immutable version. The existing latest row remains readable so run
+     * history can show both.
+     */
+    fun applyRepairAndBumpVersion(
+        testId: String,
+        stepId: String,
+        strategy: String,
+        value: String,
+    ): WritableMap? = runBlocking {
+        val previous = dao.latestApproved(testId) ?: return@runBlocking null
+        val payload = JsonBridge.json.parseToJsonElement(previous.payload).jsonObject
+        val steps = payload["steps"]?.jsonArray ?: return@runBlocking null
+        val newSteps = buildJsonArray {
+            for (raw in steps) {
+                val step = raw.jsonObject
+                if (step["id"]?.jsonPrimitive?.contentOrNull != stepId) { add(raw); continue }
+                val selector = step["selector"]?.jsonObject ?: run { add(raw); continue }
+                val newPrimary = buildJsonObject {
+                    put("strategy", JsonPrimitive(strategy))
+                    put("value", JsonPrimitive(value))
+                    put("confidence", JsonPrimitive(0.92))
+                    put("reason", JsonPrimitive("Repaired via AI-verified alternative."))
+                }
+                val prevPrimary = selector["primary"]?.jsonObject
+                val fallbacks = buildJsonArray {
+                    if (prevPrimary != null) add(prevPrimary)
+                    selector["fallbacks"]?.jsonArray?.take(1)?.forEach { add(it) }
+                }
+                add(buildJsonObject {
+                    for ((k, v) in step) if (k != "selector") put(k, v)
+                    put("selector", buildJsonObject {
+                        put("primary", newPrimary)
+                        put("fallbacks", fallbacks)
+                        put("candidateCount", selector["candidateCount"] ?: JsonPrimitive(2))
+                    })
+                })
+            }
+        }
+        val nextVersion = previous.version + 1
+        val nextPayload = JsonObject(payload + mapOf(
+            "steps" to newSteps,
+            "version" to JsonPrimitive(nextVersion),
+            "approvedAt" to JsonPrimitive(System.currentTimeMillis()),
+        ))
+        dao.upsertApprovedTest(previous.copy(
+            version = nextVersion,
+            payload = nextPayload.toString(),
+            approvedAt = System.currentTimeMillis(),
+        ))
+        JsonBridge.toWritableMap(nextPayload.toString())
+    }
+
+    fun runsForTest(testId: String, limit: Int = 6): List<JsonObject> = runBlocking {
+        dao.runsForTest(testId, limit).map {
+            JsonBridge.json.parseToJsonElement(it.payload).jsonObject
+        }
+    }
+
+    /**
+     * AI-5 classify_flake — annotate the run with the model's flake verdict.
+     * A flake verdict never suppresses a failure; it decorates it.
+     */
+    fun applyFlakeVerdict(runId: String, verdict: String, reason: String?, provenance: JsonObject) = runBlocking {
+        val row = dao.run(runId) ?: return@runBlocking
+        val current = JsonBridge.json.parseToJsonElement(row.payload).jsonObject
+        val flake = buildJsonObject {
+            put("verdict", JsonPrimitive(verdict))
+            if (reason != null) put("reason", JsonPrimitive(reason))
+            put("provenance", provenance)
+        }
+        val result = current["result"]?.jsonObject
+        val connectedResult = if (result != null && aiWasUsed(provenance)) {
+            JsonObject(result + mapOf("offline" to JsonPrimitive(false)))
+        } else result
+        val next = JsonObject(current + mapOf("aiFlake" to flake) +
+            (connectedResult?.let { mapOf("result" to it) } ?: emptyMap()))
+        dao.upsertRun(row.copy(payload = next.toString()))
+    }
 
     // -- Internal helpers ---------------------------------------------------------
 

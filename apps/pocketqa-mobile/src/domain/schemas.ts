@@ -67,6 +67,10 @@ export const Assertion = z.object({
   sourceStateId: z.string(),
   supported: z.boolean(),
   reason: z.string(),
+  /** True when the compiler surfaced this assertion via AI proposal (§4 AI-2). */
+  proposed: z.boolean().optional(),
+  /** Model confidence 0..1 when the assertion came from a proposal. */
+  aiConfidence: z.number().min(0).max(1).optional(),
 });
 export type Assertion = z.infer<typeof Assertion>;
 
@@ -141,6 +145,26 @@ export const CompilerEngine = z.enum([
 ]);
 export type CompilerEngine = z.infer<typeof CompilerEngine>;
 
+/** Wire-shape task provenance mirrored from services/ai-lab. Optional. */
+export const TaskProvenanceDomain = z
+  .object({
+    engine: z.string().optional(),
+    model: z.string().optional(),
+    promptVersion: z.string().optional(),
+    usedModel: z.boolean().optional(),
+    outputRejected: z.boolean().optional(),
+    rejectionReason: z.string().optional(),
+    latencyMs: z.number().optional(),
+    redacted: z.boolean().optional(),
+    networkUsed: z.boolean().optional(),
+    consent: z.string().optional(),
+    // The compile-intent flow rolls two calls into one provenance blob.
+    selection: z.any().optional(),
+    ranking: z.any().optional(),
+  })
+  .passthrough();
+export type TaskProvenanceDomain = z.infer<typeof TaskProvenanceDomain>;
+
 export const TestDraft = z.object({
   schemaVersion: z.literal("pocketqa/test-draft@1"),
   id: z.string(),
@@ -153,6 +177,10 @@ export const TestDraft = z.object({
   steps: z.array(TestStep).min(1),
   finalAssertions: z.array(Assertion).default([]),
   offlineOnly: z.boolean().default(true),
+  /** Set when AI-3 name_test proposed the name at compile time. */
+  aiName: z.object({ value: z.string(), provenance: TaskProvenanceDomain }).optional(),
+  /** Set when AI-2 populated `finalAssertions` with proposals. */
+  aiFinalAssertionProvenance: TaskProvenanceDomain.optional(),
 });
 export type TestDraft = z.infer<typeof TestDraft>;
 

@@ -162,9 +162,9 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
         } catch (_: Throwable) { null }
     }
 
-    // -- Internal ---------------------------------------------------------------
+    // -- Redaction --------------------------------------------------------------
 
-    internal data class RedactionResult(val text: String, val changed: Boolean)
+    data class RedactionResult(val text: String, val changed: Boolean)
 
     /**
      * Redaction patterns, kept in step with `services/ai-lab/app/redaction`
@@ -203,6 +203,8 @@ class InferenceRouter(private val ctx: ReactApplicationContext) {
         }
         return RedactionResult(out, changed)
     }
+
+    // -- Internal ---------------------------------------------------------------
 
     private fun tryOnDeviceRanking(prompt: String, candidateIds: List<String>): List<String>? {
         // The concrete ML Kit GenAI wire-up varies across module versions. We

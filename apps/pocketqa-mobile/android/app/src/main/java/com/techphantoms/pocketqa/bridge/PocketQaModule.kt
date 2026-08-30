@@ -6,6 +6,9 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.WritableMap
 import com.facebook.react.module.annotations.ReactModule
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.techphantoms.pocketqa.capture.CaptureCoordinator
 import com.techphantoms.pocketqa.compiler.CompileCoordinator
@@ -13,6 +16,7 @@ import com.techphantoms.pocketqa.execution.ReplayExecutor
 import com.techphantoms.pocketqa.explorer.ExplorerAgent
 import com.techphantoms.pocketqa.export.ExportCoordinator
 import com.techphantoms.pocketqa.inference.InferenceRouter
+import com.techphantoms.pocketqa.inference.TaskClient
 import com.techphantoms.pocketqa.policy.PolicyEngine
 import com.techphantoms.pocketqa.spec.NativePocketQaModuleSpec
 import com.techphantoms.pocketqa.storage.PocketQaRepository
@@ -38,10 +42,17 @@ class PocketQaModule(private val reactContext: ReactApplicationContext) :
     private val repo = PocketQaRepository(reactContext)
     private val policy = PolicyEngine()
     private val inference = InferenceRouter(reactContext)
+    private val tasks = TaskClient(
+        baseUrlProvider = { repo.aiLabEndpoint() },
+        redactor = { input ->
+            val r = inference.redactSensitive(input)
+            TaskClient.RedactionResult(r.text, r.changed)
+        },
+    )
     private val capture = CaptureCoordinator(reactContext, repo, policy)
-    private val compiler = CompileCoordinator(repo, inference)
-    private val executor = ReplayExecutor(reactContext, repo, policy)
-    private val explorer = ExplorerAgent(reactContext, repo, policy, inference)
+    private val compiler = CompileCoordinator(repo, inference, tasks)
+    private val executor = ReplayExecutor(reactContext, repo, policy, tasks)
+    private val explorer = ExplorerAgent(reactContext, repo, policy, inference, tasks)
     private val export = ExportCoordinator(reactContext, repo)
 
     override fun getName(): String = NAME
@@ -145,6 +156,24 @@ class PocketQaModule(private val reactContext: ReactApplicationContext) :
     override fun promoteFallbackSelector(draftId: String, stepId: String, candidateIndex: Double, promise: Promise) = guard(promise) {
         promise.resolve(repo.promoteFallback(draftId, stepId, candidateIndex.toInt()))
     }
+    override fun applyAiSelectorRepair(runId: String, stepId: String, promise: Promise) = guard(promise) {
+        val run = repo.readRunJson(runId) ?: error("run not found")
+        val repair = run["aiSelectorRepair"]?.let { j ->
+            (j as? kotlinx.serialization.json.JsonObject)
+        } ?: error("no AI repair proposal on this run")
+        require(repair["stepId"]?.jsonPrimitive?.contentOrNull == stepId) {
+            "Repair proposal targets a different step."
+        }
+        val testId = run["test"]?.jsonObject?.get("id")?.jsonPrimitive?.contentOrNull
+            ?: error("run has no test reference")
+        val bumped = repo.applyRepairAndBumpVersion(
+            testId = testId,
+            stepId = stepId,
+            strategy = repair["strategy"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+            value = repair["value"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        ) ?: error("could not bump version")
+        promise.resolve(bumped)
+    }
     override fun getFailureProposal(runId: String, promise: Promise) = guard(promise) { promise.resolve(repo.failureProposal(runId)) }
     override fun submitVoiceTranscript(intentId: String, transcript: String, promise: Promise) = guard(promise) {
         promise.resolve(inference.transcribe(intentId, transcript))
@@ -181,6 +210,16 @@ class PocketQaModule(private val reactContext: ReactApplicationContext) :
     }
     override fun deleteProviderCredential(provider: String, promise: Promise) = guard(promise) {
         repo.deleteProvider(provider); promise.resolve(null)
+    }
+    override fun saveAiLabEndpoint(url: String, promise: Promise) = guard(promise) {
+        require(url.isNotBlank()) { "Endpoint URL cannot be blank." }
+        require(url.startsWith("http://") || url.startsWith("https://")) {
+            "Endpoint must be an http(s) URL."
+        }
+        promise.resolve(repo.saveAiLabEndpoint(url.trim().removeSuffix("/")))
+    }
+    override fun deleteAiLabEndpoint(promise: Promise) = guard(promise) {
+        repo.deleteAiLabEndpoint(); promise.resolve(null)
     }
     override fun deleteSession(id: String, promise: Promise) = guard(promise) { repo.deleteSession(id); promise.resolve(null) }
     override fun deleteTest(id: String, promise: Promise) = guard(promise) { repo.deleteTest(id); promise.resolve(null) }

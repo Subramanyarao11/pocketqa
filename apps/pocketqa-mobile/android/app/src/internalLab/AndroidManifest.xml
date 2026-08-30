@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      The hackathon build talks to AI-Lab through adb reverse / a LAN address.
+      Keep cleartext disabled in the production manifest; only the explicitly
+      labelled internalLab flavor may use a local HTTP endpoint.
+    -->
+    <application
+        android:usesCleartextTraffic="true"
+        tools:replace="android:usesCleartextTraffic" />
+</manifest>

@@ -15,6 +15,13 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
   const [progress, setProgress] = useState<ReplayProgress | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [running, setRunning] = useState(false);
+  const [testName, setTestName] = useState(route.params.testId);
+
+  useEffect(() => {
+    PocketQaNative.getTest(route.params.testId, route.params.version)
+      .then((test) => setTestName(test.name || route.params.testId))
+      .catch(() => setTestName(route.params.testId));
+  }, [route.params.testId, route.params.version]);
 
   useEffect(() => {
     const off = PocketQaNative.addListener((e: PocketQaEvent) => {
@@ -51,7 +58,7 @@ export function ReplayMissionControlScreen({ navigation, route }: ScreenProps<"R
       <AppScreen>
         <Card tone="callout">
           <Text style={typography.eyebrow}>Approved test</Text>
-          <Text style={typography.title}>{route.params.testId}</Text>
+          <Text style={typography.title}>{testName}</Text>
           <Text style={typography.metadata}>v{route.params.version}</Text>
           <ProgressBar value={completion} accessibilityLabel="Replay progress" />
           <Text style={typography.metadata}>

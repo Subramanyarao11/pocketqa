@@ -104,8 +104,23 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
             <Text style={typography.body}>{proposal.suggestion}</Text>
             {proposal.action?.kind === "promote-fallback" && (
               <Text style={typography.bodyMuted}>
-                Suggested: {proposal.action.strategy} = {proposal.action.value}
+                Deterministic: {proposal.action.strategy} = {proposal.action.value}
               </Text>
+            )}
+            {proposal.aiSelectorRepair && (
+              <View style={styles.aiRepair}>
+                <Text style={typography.bodyMuted}>
+                  AI alternative ({(proposal.aiSelectorRepair.confidence * 100).toFixed(0)}%):{" "}
+                  {proposal.aiSelectorRepair.strategy} = {proposal.aiSelectorRepair.value}
+                </Text>
+                {proposal.aiSelectorRepair.provenance?.model && (
+                  <Text style={typography.metadata}>
+                    Proposed by {proposal.aiSelectorRepair.provenance.model}
+                    {" · "}
+                    v{proposal.aiSelectorRepair.provenance.promptVersion ?? "—"}
+                  </Text>
+                )}
+              </View>
             )}
             <View style={styles.detectiveActions}>
               {failureStateId && (
@@ -114,10 +129,62 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
                   onPress={() => navigation.navigate("EvidenceDetail", { stateId: failureStateId })}
                 />
               )}
-              {proposal.action && (
+              {proposal.aiSelectorRepair && (
+                <PrimaryButton
+                  label="Apply AI repair (bumps version)"
+                  onPress={async () => {
+                    try {
+                      await PocketQaNative.applyAiSelectorRepair(
+                        run.runId,
+                        proposal.aiSelectorRepair!.stepId,
+                      );
+                      navigation.replace("Home");
+                    } catch {
+                      /* surface via error state in future; kept quiet for now */
+                    }
+                  }}
+                />
+              )}
+              {!proposal.aiSelectorRepair && proposal.action && (
                 <PrimaryButton label="Apply suggestion" onPress={applyProposal} />
               )}
             </View>
+          </Card>
+        )}
+
+        {proposal?.aiExplanation && !pass && (
+          <Card tone="info">
+            <View style={styles.detectiveHeader}>
+              <Text style={typography.eyebrow}>Why this failed</Text>
+              {proposal.aiExplanationProvenance?.model && (
+                <Text style={typography.metadata}>
+                  Explained by {proposal.aiExplanationProvenance.model}
+                </Text>
+              )}
+            </View>
+            <Text style={typography.body}>{proposal.aiExplanation}</Text>
+            <Text style={typography.metadata}>Explanation only — not applied</Text>
+          </Card>
+        )}
+
+        {proposal?.aiFlake && (
+          <Card>
+            <View style={styles.detectiveHeader}>
+              <Text style={typography.eyebrow}>Flake verdict</Text>
+              <StatusPill
+                label={proposal.aiFlake.verdict}
+                tone={proposal.aiFlake.verdict === "flake" ? "amber" : "red"}
+              />
+            </View>
+            {proposal.aiFlake.reason && (
+              <Text style={typography.bodyMuted}>{proposal.aiFlake.reason}</Text>
+            )}
+            {proposal.aiFlake.provenance?.model && (
+              <Text style={typography.metadata}>
+                Classified by {proposal.aiFlake.provenance.model}
+                {" — the failure above is not suppressed"}
+              </Text>
+            )}
           </Card>
         )}
 
@@ -178,8 +245,14 @@ export function EvidenceScreen({ navigation, route }: ScreenProps<"Evidence">) {
   );
 }
 
-const createStyles = makeStyles((_theme: AppTheme) => ({
+const createStyles = makeStyles((theme: AppTheme) => ({
   pills: layout.rowWrap,
   detectiveHeader: layout.rowBetween,
   detectiveActions: { ...layout.rowWrap, gap: spacing.sm, marginTop: spacing.sm },
+  aiRepair: {
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: theme.colors.border,
+  },
 }));

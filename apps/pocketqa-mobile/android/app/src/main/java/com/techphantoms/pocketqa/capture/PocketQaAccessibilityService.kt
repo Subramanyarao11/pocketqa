@@ -88,12 +88,23 @@ class PocketQaAccessibilityService : AccessibilityService() {
     }
 
     private fun publishStableState() {
-        val root = rootInActiveWindow ?: return
         val pkg = latestPackage ?: return
         val screen = latestScreen ?: "screen"
-        val baseline = UiTreeCapture.snapshot(
-            root, pkg, screen, System.currentTimeMillis(), displayMetrics(),
-        )
+        // Snapshot the *target's* window, not whichever one is active.
+        //
+        // This read rootInActiveWindow and stamped it with the session package,
+        // so during the switch into the target — while the previous app still
+        // owned the active window — that app's tree was recorded as the
+        // target's. A Demo Shop test came out with `add_task_fab`, a Demo Tasks
+        // control, as its first step. Observing through CaptureCoordinator
+        // yields Ok only when the target's own window is readable; anything
+        // else is skipped, and the next debounce tries again.
+        val baseline = when (
+            val obs = CaptureCoordinator.observe(pkg, screen)
+        ) {
+            is CaptureCoordinator.Observation.Ok -> obs.snapshot
+            else -> return
+        }
         // Best-effort screenshot; falls back to no URI if the API is unavailable
         // or a permission dialog covers the target window.
         val screenshot = try {

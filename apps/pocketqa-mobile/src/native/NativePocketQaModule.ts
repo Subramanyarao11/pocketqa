@@ -52,6 +52,7 @@ export interface Spec extends TurboModule {
   getState(stateId: string): Promise<Object>;
   listSelectorCandidates(draftId: string, stepId: string): Promise<Array<Object>>;
   promoteFallbackSelector(draftId: string, stepId: string, candidateIndex: number): Promise<Object>;
+  applyAiSelectorRepair(runId: string, stepId: string): Promise<Object>;
   getFailureProposal(runId: string): Promise<Object>;
   submitVoiceTranscript(intentId: string, transcript: string): Promise<Object>;
   checkpointActiveOperation(): Promise<void>;
@@ -71,6 +72,8 @@ export interface Spec extends TurboModule {
   // ---- providers + teardown ----
   saveProviderCredential(input: Object): Promise<Object>;
   deleteProviderCredential(provider: string): Promise<void>;
+  saveAiLabEndpoint(url: string): Promise<Object>;
+  deleteAiLabEndpoint(): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   deleteTest(testId: string): Promise<void>;
   deleteAllData(): Promise<void>;

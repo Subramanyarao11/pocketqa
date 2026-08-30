@@ -23,7 +23,11 @@ function AppRoot() {
   const applyEvent = useActiveOperationStore((s) => s.applyEvent);
   const hydrate = useActiveOperationStore((s) => s.hydrate);
   const refreshReadiness = useReadinessStore((s) => s.refresh);
-  const lastState = useRef<AppStateStatus>(AppState.currentState);
+  // RN 0.87 types currentState as nullable: it is undefined before the first
+  // state event on Android. Narrow once here rather than at each read.
+  const lastState = useRef<AppStateStatus>(
+    (AppState.currentState ?? "active") as AppStateStatus,
+  );
   const { colors, isDark } = useAppTheme();
 
   useEffect(() => {
@@ -54,10 +58,8 @@ function AppRoot() {
 
   return (
     <>
-      <StatusBar
-        barStyle={isDark ? "light-content" : "dark-content"}
-        backgroundColor={colors.background}
-      />
+      {/* backgroundColor is Android-only in the RN 0.87 typings. */}
+      <StatusBar barStyle={isDark ? "light-content" : "dark-content"} />
       <RootNavigator />
     </>
   );

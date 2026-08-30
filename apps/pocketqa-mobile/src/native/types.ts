@@ -30,6 +30,7 @@ export interface DeviceReadiness {
   demoShopInstalled: boolean;
   onDeviceModel: "unavailable" | "ready";
   connected: Record<ConnectedProvider, { configured: boolean; maskedKey?: string }>;
+  aiLab: { configured: boolean; displayHost?: string };
   offlineMode: boolean;
   packageAllowlist: string[];
 }
@@ -134,7 +135,21 @@ export interface SelectorCandidate {
   isPrimary: boolean;
 }
 
-/** §7.11 — Failure Detective repair proposal. */
+/** Wire-shape provenance emitted alongside every AI-touched surface (§5). */
+export interface TaskProvenance {
+  engine: string;
+  model?: string;
+  promptVersion?: string;
+  usedModel: boolean;
+  outputRejected: boolean;
+  rejectionReason?: string;
+  latencyMs: number;
+  redacted: boolean;
+  networkUsed: boolean;
+  consent: string;
+}
+
+/** §7.11 — Failure Detective repair proposal, plus optional AI proposals. */
 export interface FailureProposal {
   runId: string;
   stepId?: string;
@@ -146,6 +161,23 @@ export interface FailureProposal {
     | { kind: "add-wait"; ms: number }
     | { kind: "update-fixture"; fixture: string }
     | { kind: "review-assertion"; assertionTarget: string };
+  /** AI-1 explain_failure — always attributed, never replaces `suggestion`. */
+  aiExplanation?: string;
+  aiExplanationProvenance?: TaskProvenance;
+  /** AI-4 repair_selector — surfaced beside the Apply button. */
+  aiSelectorRepair?: {
+    stepId: string;
+    strategy: string;
+    value: string;
+    confidence: number;
+    provenance?: TaskProvenance;
+  };
+  /** AI-5 classify_flake — annotates the failure; never suppresses it. */
+  aiFlake?: {
+    verdict: "flake" | "regression" | "inconclusive" | string;
+    reason?: string;
+    provenance?: TaskProvenance;
+  };
 }
 
 export interface VoiceTranscript {
@@ -174,6 +206,12 @@ export interface MissionProgress {
 export interface MissionSummary {
   mission: Mission;
   events: import("@domain").MissionEvent[];
+  /**
+   * Which engine ranked the candidates, when one was consulted. Absent for a
+   * mission that never reached the ranker — the difference matters, because the
+   * review screen otherwise asserts a model was involved without showing one.
+   */
+  rankerProvenance?: TaskProvenance;
   proposal?: {
     discoveredStateId: string;
     candidateAssertions: Assertion[];
@@ -267,6 +305,7 @@ export interface PocketQaNativeApi {
   getState(stateId: string): Promise<UIState | null>;
   listSelectorCandidates(draftId: string, stepId: string): Promise<SelectorCandidate[]>;
   promoteFallbackSelector(draftId: string, stepId: string, candidateIndex: number): Promise<TestDraft>;
+  applyAiSelectorRepair(runId: string, stepId: string): Promise<ApprovedTest>;
   getFailureProposal(runId: string): Promise<FailureProposal | null>;
   submitVoiceTranscript(intentId: string, transcript: string): Promise<VoiceTranscript>;
   checkpointActiveOperation(): Promise<void>;
@@ -283,6 +322,8 @@ export interface PocketQaNativeApi {
 
   saveProviderCredential(input: ProviderCredentialInput): Promise<ProviderStatus>;
   deleteProviderCredential(provider: ConnectedProvider): Promise<void>;
+  saveAiLabEndpoint(url: string): Promise<{ configured: boolean; displayHost: string }>;
+  deleteAiLabEndpoint(): Promise<void>;
   deleteSession(sessionId: string): Promise<void>;
   deleteTest(testId: string): Promise<void>;
   deleteAllData(): Promise<void>;

@@ -63,6 +63,21 @@ export function ExplorerMissionControlScreen({ navigation, route }: ScreenProps<
           <LogView lines={log} emptyLabel="Waiting for events…" />
         </Card>
 
+        {summary?.rankerProvenance && (
+          <Card>
+            <Text style={typography.eyebrow}>Ranker provenance</Text>
+            <Text style={typography.bodyMuted}>
+              {summary.rankerProvenance.usedModel
+                ? `Ranked by ${summary.rankerProvenance.model ?? summary.rankerProvenance.engine}` +
+                  ` · ${summary.rankerProvenance.promptVersion ?? "—"}`
+                : "Ranked deterministically — no model was consulted."}
+            </Text>
+            <Text style={typography.metadata}>
+              The model only reorders policy-filtered candidates; it never widens the set.
+            </Text>
+          </Card>
+        )}
+
         {summary?.proposal && (
           <Card tone="callout">
             <StatusPill label="Proposal only" tone="violet" />

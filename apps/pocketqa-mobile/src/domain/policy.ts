@@ -8,7 +8,7 @@ import type { CapturedNode, UIState } from "./schemas";
  * anywhere in this chain hard-stops.
  */
 
-export const ALLOWLISTED_PACKAGES = ["com.pocketqa.demoshop"];
+export const ALLOWLISTED_PACKAGES = ["com.techphantoms.pocketqa.demoshop"];
 
 const BLOCKED_KEYWORDS = [
   "pay", "checkout complete", "confirm order", "place order", "purchase",

@@ -59,6 +59,7 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
     demoShopInstalled: true,
     onDeviceModel: "unavailable",
     connected: { sarvam: { configured: false }, openai: { configured: false } },
+    aiLab: { configured: false },
     offlineMode: true,
     packageAllowlist: [...ALLOWLISTED_PACKAGES],
   };
@@ -394,6 +395,16 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
       }));
     },
 
+    async applyAiSelectorRepair(runId, _stepId) {
+      const r = runs.get(runId);
+      if (!r) throw new Error("run not found");
+      const t = tests.get(r.test.id);
+      if (!t) throw new Error("test not found");
+      const bumped: ApprovedTest = { ...t, version: t.version + 1, approvedAt: Date.now() };
+      tests.set(t.id, bumped);
+      return bumped;
+    },
+
     async promoteFallbackSelector(draftId, stepId, candidateIndex) {
       const d = drafts.get(draftId); if (!d) throw new Error("draft not found");
       const stepIdx = d.steps.findIndex((s) => s.id === stepId);
@@ -560,6 +571,13 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
       return { provider: input.provider, configured: true, maskedKey: readiness.connected[input.provider].maskedKey };
     },
     async deleteProviderCredential(provider) { readiness.connected[provider] = { configured: false }; },
+    async saveAiLabEndpoint(url: string) {
+      const trimmed = url.trim().replace(/\/$/, "");
+      const host = trimmed.replace(/^[a-z]+:\/\//, "");
+      readiness.aiLab = { configured: true, displayHost: host };
+      return { configured: true, displayHost: host };
+    },
+    async deleteAiLabEndpoint() { readiness.aiLab = { configured: false }; },
     async deleteSession(sessionId) { sessions.delete(sessionId); },
     async deleteTest(testId) { tests.delete(testId); },
     async deleteAllData() {

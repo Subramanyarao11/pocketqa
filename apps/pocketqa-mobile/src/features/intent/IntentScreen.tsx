@@ -321,7 +321,10 @@ export function IntentScreen({ navigation }: ScreenProps<"Intent">) {
               fixture,
               disclosureAcknowledged: ack,
             });
-            navigation.navigate("CaptureReady", { intentId });
+            navigation.navigate("CaptureReady", {
+              intentId,
+              targetName: apps.find((a) => a.packageName === pkg)?.displayName,
+            });
           }}
         />
       </BottomActionBar>

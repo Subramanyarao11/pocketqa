@@ -47,6 +47,12 @@ describe("SelectorCandidatesScreen", () => {
     render(<SelectorCandidatesScreen navigation={nav as never} route={route} />);
     await waitFor(() => expect(screen.getByText(/resourceId = shop:add-to-cart/)).toBeTruthy());
     fireEvent.press(screen.getByLabelText(/resourceId candidate/i));
+    // React 19 does not flush this state update before the next query, so
+    // reading the button immediately finds it still disabled and swallows the
+    // press. Wait for the selection to land before confirming.
+    await waitFor(() =>
+      expect(screen.getAllByRole("radio")[1].props.accessibilityState?.selected).toBe(true),
+    );
     fireEvent.press(screen.getByRole("button", { name: "Use this selector" }));
     await waitFor(() => expect(promote).toHaveBeenCalledWith("d1", "s1", 1));
     await waitFor(() => expect(nav.goBack).toHaveBeenCalled());
