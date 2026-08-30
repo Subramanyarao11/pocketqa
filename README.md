@@ -39,6 +39,7 @@ New contributors should read these in order:
 8. [AI engine handoff (AI-B-02)](PocketQA_AI_Engine_Handoff.md)
 9. [Capture findings and interaction-inference design](PocketQA_Capture_Findings_and_Inference_Design.md)
 10. [Wiring the AI layer into the product](PocketQA_AI_Integration_Design.md)
+11. [Live demo runbook](DEMO_RUNBOOK.md) — three hand-run paths, with pre-flight and recovery
 
 Hackathon and pitch material:
 
