@@ -168,6 +168,89 @@ id — you can point at the selector and explain why it did not take the
 
 ---
 
+## What Agent Lab actually is
+
+Everywhere else, **you** demonstrate and PocketQA records. Agent Lab inverts
+that: you give it a goal and a budget, and it pokes at the app itself looking
+for a state you are not testing yet.
+
+It observes the screen, asks the model to pick the most promising control *from
+a list the policy engine has already filtered*, taps it, observes again — until
+it exhausts its actions, exhausts its time, or decides to stop. It returns **a
+proposal**: candidate assertions from what it found. It cannot create an
+approved test; "Open in review" drops you into the same review screen as Path A.
+
+> "It explores inside a budget I approved, and comes back with a suggestion — it
+> never acts on its own conclusions."
+
+**Be honest about what you will see.** In testing the model often chose to stop
+immediately (`Actions 0/3`) and still returned three candidate assertions from
+its first observation. Correct when the goal does not match the screen, but
+undramatic. For visible exploration, use a goal reachable from the product list
+such as `Find the cart state after adding an item`.
+
+---
+
+## Path E — Showing a failure (≈1–3 min)
+
+Not required, but a QA tool that only ever goes green proves nothing. Three
+ways, safest first.
+
+**E1 — open a failure you already have (zero risk).** The device holds 10 failed
+runs beside 12 passing ones. The best is **"SAVE20 coupon survives checkout
+retry"**: category `assertion-regression`, summary *Final assertion failed:
+expected "SAVE20 applied"*, with the Failure Detective, the AI explanation and
+the flake verdict all on screen.
+
+> "The checkout failed, so the coupon confirmation never appeared — and the test
+> caught exactly that, without me telling it what to look for."
+
+**E2 — cause one live with `coupon-retry`.** That fixture makes the first
+checkout attempt fail and turns the button into *Retry*. Record with the fixture
+selected, demonstrate as far as **Place Order** and *stop there* — do not tap
+Retry — assert `SAVE20 applied`, approve, replay. It fails with
+`assertion-regression`.
+
+**E3 — assert something untrue.** Add a final assertion for text that will not
+be on the last screen. Quickest, but say what you are doing.
+
+> **The Add assertion button sits under the keyboard.** Type the target, dismiss
+> the keyboard, *then* tap Add assertion. Tapping with the keyboard up hits the
+> keyboard and the assertion is silently not added.
+
+**Not a failure fixture:** `selector-drift` renames Apply to "Use coupon" but
+keeps its test id, so a recorded test still passes. That is a resilience story —
+"we changed the wording and the test held, because it anchors on identity, not
+words."
+
+---
+
+## Which intents actually work
+
+**The intent does not choose the steps.** Your demonstration produces the steps.
+The intent names the test and decides which *final assertions* get proposed.
+Nothing checks the two agree — you can type one thing, demonstrate another, and
+it compiles happily.
+
+Assertion candidates are built from **every visible piece of text on the last
+screen of your demonstration**, so:
+
+> An intent works when it is about something visible on the final screen.
+
+| Intent | Outcome |
+|---|---|
+| `The cart shows Wireless Headphones after adding it` | 2 assertions proposed |
+| `The Done tab lists Write release notes` | 1 assertion proposed |
+| `Coupon SAVE20 stays applied in the cart` | works if you demonstrate as far as the discount showing |
+| `Checkout should feel responsive` | nothing to assert — "Couldn't propose assertions" |
+| `Receipt for a@b.com card 4111…` | redacted before it leaves, so the model declines |
+
+If an evaluator's own intent yields nothing, that is not a crash — the screen
+says so and they can add an assertion by hand. Say: *"it only proposes things it
+can actually observe; it will not invent an assertion to look clever."*
+
+---
+
 ## If something goes wrong
 
 | Symptom | Cause | Fix |
