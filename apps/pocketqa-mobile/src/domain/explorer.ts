@@ -6,7 +6,7 @@ import type {
   MissionTool,
   UIState,
 } from "./schemas";
-import { ALLOWLISTED_PACKAGES, checkNode, checkPackageBoundary } from "./policy";
+import { checkNode, checkPackageBoundary } from "./policy";
 import { rankSelectorsForNode } from "./selectors";
 import { nextId } from "./ids";
 import type { ReplayHarness } from "./executor";

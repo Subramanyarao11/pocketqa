@@ -1,6 +1,14 @@
-import { PropsWithChildren } from "react";
-import { View, ViewStyle } from "react-native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme, type ThemeColors } from "@theme";
+import { type PropsWithChildren } from "react";
+import { View, type ViewStyle } from "react-native";
+import {
+  makeStyles,
+  radius,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+  type ThemeColors,
+} from "@theme";
 
 export type CardTone = "surface" | "callout" | "warn" | "danger" | "info";
 
@@ -24,16 +32,12 @@ function palette(colors: ThemeColors, tone: CardTone): ViewStyle {
   }
 }
 
-const createStyles = ({ colors, isDark }: AppTheme) => ({
+const createStyles = makeStyles(({ elevation }: AppTheme) => ({
   base: {
     borderRadius: radius.card,
     borderWidth: 1,
     padding: spacing.lg,
     gap: spacing.md,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: isDark ? 0 : 0.035,
-    shadowRadius: 8,
-    elevation: isDark ? 0 : 1,
+    ...elevation.card,
   },
-});
+}));

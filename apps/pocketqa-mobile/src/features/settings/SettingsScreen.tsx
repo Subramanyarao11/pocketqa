@@ -1,14 +1,30 @@
 import { useState } from "react";
 import { Text, View } from "react-native";
 import { Info, Trash2 } from "lucide-react-native";
-import type { ScreenProps } from "@navigation";
 import {
-  AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
-  StatusPill, Toggle, TopBar,
+  iconSize,
+  layout,
+  makeStyles,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
+import {
+  AppScreen,
+  BottomActionBar,
+  Card,
+  ConfirmSheet,
+  DangerButton,
+  GhostButton,
+  Spacer,
+  StatusPill,
+  Toggle,
+  TopBar,
 } from "@components";
 import { PocketQaNative } from "@native";
+import { type ScreenProps } from "@navigation";
 import { useReadinessStore } from "@store";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
   const { colors, typography, isDark } = useAppTheme();
@@ -50,7 +66,7 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
         <Text style={typography.eyebrow}>Local AI</Text>
         <Card>
           <View style={styles.rowBetween}>
-            <View style={{ flex: 1 }}>
+            <View style={styles.flex}>
               <Text style={typography.h2}>On-device Prompt engine</Text>
               <Text style={typography.bodyMuted}>
                 Gemini Nano / ML Kit Prompt API. Deterministic local compiler is the guaranteed fallback.
@@ -103,7 +119,7 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
           </Text>
           <DangerButton
             label="Delete all data"
-            icon={<Trash2 color={colors.red} size={16} />}
+            icon={<Trash2 color={colors.red} size={iconSize.sm} />}
             onPress={() => setWipeOpen(true)}
             block
           />
@@ -114,10 +130,10 @@ export function SettingsScreen({ navigation }: ScreenProps<"Settings">) {
       <BottomActionBar>
         <GhostButton
           label="About & limits"
-          icon={<Info color={colors.text} size={16} />}
+          icon={<Info color={colors.text} size={iconSize.sm} />}
           onPress={() => navigation.navigate("AboutAndLimits")}
         />
-        <View style={{ flex: 1 }} />
+        <Spacer />
       </BottomActionBar>
 
       <ConfirmSheet
@@ -143,8 +159,8 @@ function SettingRow({
   const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   return (
-    <View style={[styles.rowBetween, { paddingVertical: spacing.sm, opacity: disabled ? 0.5 : 1 }]}>
-      <View style={{ flex: 1 }}>
+    <View style={[styles.rowBetween, styles.settingRow, disabled && styles.disabled]}>
+      <View style={styles.flex}>
         <Text style={typography.h2}>{label}</Text>
         <Text style={typography.bodyMuted}>{hint}</Text>
       </View>
@@ -162,9 +178,9 @@ function ProviderRow({
   const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   return (
-    <View style={{ paddingVertical: spacing.sm }}>
+    <View style={styles.settingRow}>
       <View style={styles.rowBetween}>
-        <View style={{ flex: 1 }}>
+        <View style={styles.flex}>
           <Text style={typography.h2}>{label}</Text>
           <Text style={typography.bodyMuted}>{hint}</Text>
         </View>
@@ -179,8 +195,10 @@ function ProviderRow({
   );
 }
 
-const createStyles = (_theme: AppTheme) => ({
-  rowBetween: { flexDirection: "row", alignItems: "center", gap: spacing.md, justifyContent: "space-between" },
-  rowActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm },
-  flex: { flex: 1 },
-});
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  rowBetween: layout.rowBetween,
+  rowActions: { ...layout.row, gap: spacing.sm, marginTop: spacing.sm },
+  settingRow: { paddingVertical: spacing.sm },
+  disabled: { opacity: 0.5 },
+  flex: layout.fill,
+}));

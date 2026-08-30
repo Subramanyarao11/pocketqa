@@ -1,7 +1,6 @@
 import { StyleSheet, Text, View } from "react-native";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
-import { StatusPill } from "./StatusPill";
-import { GhostButton } from "./Button";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { GhostButton, StatusPill } from "@components";
 
 export interface ReadinessRowProps {
   label: string;
@@ -28,7 +27,7 @@ export function ReadinessRow({ label, status, detail, action }: ReadinessRowProp
       accessibilityRole="summary"
       accessibilityLabel={`${label}, ${copy}. ${detail}`}
     >
-      <View style={{ flex: 1, minWidth: 0 }}>
+      <View style={styles.copy}>
         <View style={styles.headline}>
           <Text style={typography.h2}>{label}</Text>
           <StatusPill label={copy} tone={tone} />
@@ -40,14 +39,13 @@ export function ReadinessRow({ label, status, detail, action }: ReadinessRowProp
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
+    ...layout.row,
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  headline: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: 2 },
-});
+  copy: { flex: 1, minWidth: 0 },
+  headline: { ...layout.row, gap: spacing.sm, marginBottom: spacing.xxs },
+}));

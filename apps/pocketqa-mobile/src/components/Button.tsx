@@ -1,5 +1,15 @@
 import { ActivityIndicator, Text, TouchableOpacity, View } from "react-native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme, type ThemeColors } from "@theme";
+import {
+  controlSize,
+  layout,
+  radius,
+  spacing,
+  useAppTheme,
+  makeStyles,
+  useThemeStyles,
+  type AppTheme,
+  type ThemeColors,
+} from "@theme";
 
 export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -26,7 +36,7 @@ function Button({
   accessibilityLabel,
   testID,
 }: ButtonProps) {
-  const { colors } = useAppTheme();
+  const { colors, typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   const isDisabled = !!(disabled || loading);
   const palette = paletteFor(colors, variant);
@@ -41,7 +51,8 @@ function Button({
       activeOpacity={0.72}
       style={[
         styles.base,
-        { backgroundColor: palette.bg, borderColor: palette.border, opacity: isDisabled ? 0.5 : 1 },
+        { backgroundColor: palette.bg, borderColor: palette.border },
+        isDisabled && styles.disabled,
         block && styles.block,
       ]}
       testID={testID}
@@ -51,7 +62,7 @@ function Button({
       ) : (
         <View style={styles.row}>
           {icon}
-          <Text style={[styles.label, { color: palette.fg }]}>{label}</Text>
+          <Text style={[typography.button, { color: palette.fg }]}>{label}</Text>
         </View>
       )}
     </TouchableOpacity>
@@ -67,19 +78,18 @@ function paletteFor(colors: ThemeColors, v: ButtonVariant) {
   }
 }
 
-const createStyles = (_theme: AppTheme) => ({
+const createStyles = makeStyles((_theme: AppTheme) => ({
   base: {
-    minHeight: 48,
+    minHeight: controlSize.md,
     borderRadius: radius.control,
     borderWidth: 1,
-    paddingHorizontal: 18,
-    justifyContent: "center",
-    alignItems: "center",
+    paddingHorizontal: spacing.lg,
+    ...layout.center,
   },
   block: { alignSelf: "stretch" },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  label: { fontSize: 14, lineHeight: 20, fontWeight: "700", letterSpacing: 0.1 },
-});
+  disabled: { opacity: 0.5 },
+  row: { ...layout.row, gap: spacing.sm },
+}));
 
 export const PrimaryButton = (p: Omit<ButtonProps, "variant">) => <Button {...p} variant="primary" />;
 export const SecondaryButton = (p: Omit<ButtonProps, "variant">) => <Button {...p} variant="secondary" />;

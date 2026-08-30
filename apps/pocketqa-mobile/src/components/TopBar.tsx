@@ -1,7 +1,17 @@
 import { Platform, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { ChevronLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import {
+  controlSize,
+  iconSize,
+  layout,
+  radius,
+  spacing,
+  useAppTheme,
+  makeStyles,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
 
 export interface TopBarProps {
   title: string;
@@ -31,10 +41,10 @@ export function TopBar({ title, subtitle, onBack, right }: TopBarProps) {
               hitSlop={12}
               style={styles.backBtn}
             >
-              <ChevronLeft color={colors.text} size={20} strokeWidth={2.2} />
+              <ChevronLeft color={colors.text} size={iconSize.lg} strokeWidth={2.2} />
             </TouchableOpacity>
           )}
-          <View style={{ minWidth: 0, flexShrink: 1 }}>
+          <View style={styles.titleGroup}>
             <Text style={typography.title} numberOfLines={1}>{title}</Text>
             {subtitle ? <Text style={typography.bodyMuted} numberOfLines={1}>{subtitle}</Text> : null}
           </View>
@@ -45,28 +55,27 @@ export function TopBar({ title, subtitle, onBack, right }: TopBarProps) {
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   safe: { backgroundColor: colors.background },
   root: {
+    ...layout.rowBetween,
     minHeight: 64,
     paddingVertical: spacing.sm,
-    paddingHorizontal: 20,
+    // Must match AppScreen's gutter or the header sits off the content column.
+    paddingHorizontal: spacing.gutter,
     backgroundColor: colors.background,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  leftGroup: { flexDirection: "row", alignItems: "center", gap: spacing.md, flex: 1 },
+  leftGroup: { ...layout.row, flex: 1 },
+  titleGroup: { minWidth: 0, flexShrink: 1 },
   backBtn: {
-    width: 40, height: 40,
-    borderRadius: 10,
+    width: controlSize.tileSm,
+    height: controlSize.tileSm,
+    borderRadius: radius.control,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
+    ...layout.center,
   },
-});
+}));

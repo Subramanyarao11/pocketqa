@@ -1,6 +1,6 @@
 import { Modal, Text, View } from "react-native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
-import { DangerButton, GhostButton, PrimaryButton } from "./Button";
+import { makeStyles, radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { DangerButton, GhostButton, PrimaryButton } from "@components";
 
 export interface ConfirmSheetProps {
   visible: boolean;
@@ -44,7 +44,7 @@ export function ConfirmSheet({
   );
 }
 
-const createStyles = ({ colors, isDark }: AppTheme) => ({
+const createStyles = makeStyles(({ colors, elevation }: AppTheme) => ({
   scrim: {
     flex: 1,
     backgroundColor: colors.scrim,
@@ -59,11 +59,7 @@ const createStyles = ({ colors, isDark }: AppTheme) => ({
     gap: spacing.lg,
     borderTopWidth: 1,
     borderTopColor: colors.border,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: -8 },
-    shadowOpacity: isDark ? 0.25 : 0.12,
-    shadowRadius: 20,
-    elevation: 12,
+    ...elevation.sheet,
   },
   actions: {
     flexDirection: "row",
@@ -71,4 +67,4 @@ const createStyles = ({ colors, isDark }: AppTheme) => ({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-});
+}));

@@ -1,4 +1,4 @@
-import type { TextStyle } from "react-native";
+import { Easing, type EasingFunction, type TextStyle, type ViewStyle } from "react-native";
 
 /**
  * PocketQA's semantic colour contract. Screens consume meaning rather than raw
@@ -91,25 +91,67 @@ export const spacing = {
   xl: 24,
   xxl: 32,
   xxxl: 48,
+  /**
+   * Horizontal screen gutter. Deliberately off the 4dp scale — it sits between
+   * `lg` and `xl` so cards clear the edge without the content column feeling
+   * cramped. `AppScreen` and `TopBar` must agree on it or headers misalign with
+   * body content, so it lives here rather than at either call site.
+   */
+  gutter: 20,
 } as const;
 
 export const radius = {
-  control: 10,
+  xs: 4,
+  sm: 6,
+  /** Buttons and other interactive chrome. Matches `input` by design. */
+  control: 12,
   input: 12,
-  card: 14,
+  card: 16,
   panel: 18,
   pill: 999,
 } as const;
 
+/** Lucide `size` values. Anything outside this scale reads as a mistake. */
+export const iconSize = {
+  xs: 14,
+  sm: 16,
+  md: 18,
+  lg: 20,
+  xl: 24,
+  xxl: 28,
+} as const;
+
+/**
+ * Interactive heights and square chrome. `minTouch` is the accessibility floor
+ * every pressable must clear (directly or via `hitSlop`).
+ */
+export const controlSize = {
+  minTouch: 48,
+  /** Compact inline control — chips, segmented tabs, icon buttons. */
+  sm: 36,
+  /** Default control height for buttons and inputs. */
+  md: 48,
+  /** Decorative rounded-square icon backgrounds. */
+  tileSm: 40,
+  tileMd: 44,
+  tileLg: 56,
+} as const;
+
 export interface ThemeTypography {
   display: TextStyle;
-  eyebrow: TextStyle;
+  brand: TextStyle;
   title: TextStyle;
+  subtitle: TextStyle;
+  eyebrow: TextStyle;
   h2: TextStyle;
   body: TextStyle;
   bodyMuted: TextStyle;
   metadata: TextStyle;
   mono: TextStyle;
+  /** Button and segmented-control labels. */
+  button: TextStyle;
+  /** Pill and chip labels — the smallest text we ship. */
+  pill: TextStyle;
 }
 
 export function createTypography(colors: ThemeColors): ThemeTypography {
@@ -120,6 +162,20 @@ export function createTypography(colors: ThemeColors): ThemeTypography {
       fontWeight: "700",
       lineHeight: 37,
       letterSpacing: -0.7,
+    },
+    brand: {
+      color: colors.text,
+      fontSize: 24,
+      fontWeight: "700",
+      lineHeight: 30,
+      letterSpacing: -0.5,
+    },
+    subtitle: {
+      color: colors.text,
+      fontSize: 18,
+      fontWeight: "700",
+      lineHeight: 23,
+      letterSpacing: -0.2,
     },
     eyebrow: {
       color: colors.textDim,
@@ -157,9 +213,9 @@ export function createTypography(colors: ThemeColors): ThemeTypography {
     },
     metadata: {
       color: colors.textDim,
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: "500",
-      lineHeight: 17,
+      lineHeight: 18,
     },
     mono: {
       color: colors.textMuted,
@@ -167,12 +223,126 @@ export function createTypography(colors: ThemeColors): ThemeTypography {
       fontSize: 12,
       lineHeight: 18,
     },
+    button: {
+      color: colors.text,
+      fontSize: 14,
+      fontWeight: "700",
+      lineHeight: 20,
+      letterSpacing: 0.1,
+    },
+    pill: {
+      color: colors.text,
+      fontSize: 11,
+      fontWeight: "700",
+      lineHeight: 15,
+      letterSpacing: 0.25,
+    },
   };
 }
 
-export const timings = {
-  quick: 180,
-  screen: 260,
+/**
+ * Shadow recipes. Android reads `elevation`, iOS reads the shadow quadruple, so
+ * a preset has to carry both. Dark surfaces get no shadow at all — a black glow
+ * on a near-black background only muddies the edge, so depth there comes from
+ * the border instead.
+ */
+export interface ThemeElevation {
+  /** Cards and other resting surfaces. */
+  card: ViewStyle;
+  /** Bars pinned to an edge; the offset points away from the content. */
+  barTop: ViewStyle;
+  /** Modal sheets — always shadowed, since they float over a scrim. */
+  sheet: ViewStyle;
+}
+
+export function createElevation(colors: ThemeColors, isDark: boolean): ThemeElevation {
+  return {
+    card: {
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.035,
+      shadowRadius: 8,
+      elevation: isDark ? 0 : 1,
+    },
+    barTop: {
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: isDark ? 0 : 0.06,
+      shadowRadius: 10,
+      elevation: isDark ? 0 : 4,
+    },
+    sheet: {
+      shadowColor: colors.shadow,
+      shadowOffset: { width: 0, height: -8 },
+      shadowOpacity: isDark ? 0.25 : 0.12,
+      shadowRadius: 20,
+      elevation: 12,
+    },
+  };
+}
+
+/**
+ * A floating control tinted by its own accent rather than by `colors.shadow`,
+ * so it stays legible against both palettes.
+ */
+export function accentGlow(color: string): ViewStyle {
+  return {
+    shadowColor: color,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    elevation: 8,
+  };
+}
+
+/**
+ * Durations and curves for every animation in the app. Screen transitions are
+ * owned by react-navigation and are listed here only so the app's own motion
+ * can be tuned to match.
+ */
+export const motion = {
+  duration: {
+    /** State flips the user is already looking at — toggles, chips. */
+    quick: 180,
+    /** Value changes the user is waiting on — progress, reveal. */
+    base: 220,
+    /** Screen-level transitions. */
+    screen: 260,
+  },
+  easing: {
+    /** Default: fast out, settle in. Use unless there's a reason not to. */
+    standard: Easing.bezier(0.2, 0, 0, 1) as EasingFunction,
+    /** Entering the screen. */
+    decelerate: Easing.out(Easing.cubic) as EasingFunction,
+    /** Leaving the screen. */
+    accelerate: Easing.in(Easing.cubic) as EasingFunction,
+  },
+} as const;
+
+/**
+ * Layout idioms that were being retyped in every `createStyles`. Spread them
+ * rather than redeclaring: `row: { ...layout.rowBetween, paddingVertical: … }`.
+ */
+export const layout = {
+  fill: { flex: 1 } as ViewStyle,
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+  } as ViewStyle,
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  } as ViewStyle,
+  rowWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.xs,
+  } as ViewStyle,
+  center: { alignItems: "center", justifyContent: "center" } as ViewStyle,
 } as const;
 
 export type StatusTone = "lime" | "cyan" | "amber" | "red" | "violet" | "dim";

@@ -5,11 +5,11 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { RootNavigator } from "@navigation";
 import { PocketQaNative } from "@native";
 import { useActiveOperationStore, useReadinessStore } from "@store";
-import { AppThemeProvider, useAppTheme } from "@theme";
+import { AppThemeProvider, layout, useAppTheme } from "@theme";
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView style={layout.fill}>
       <SafeAreaProvider>
         <AppThemeProvider>
           <AppRoot />

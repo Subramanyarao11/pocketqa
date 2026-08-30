@@ -1,17 +1,26 @@
 import { useEffect, useState } from "react";
 import { Text, TouchableOpacity, View } from "react-native";
-import type { ScreenProps } from "@navigation";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
-  StatusPill, TopBar,
+  AppScreen,
+  BottomActionBar,
+  Card,
+  CodeChip,
+  GhostButton,
+  InlineNotice,
+  PrimaryButton,
+  RadioIndicator,
+  Spacer,
+  StatusPill,
+  TopBar,
 } from "@components";
 import { PocketQaNative, type SelectorCandidate } from "@native";
+import { type ScreenProps } from "@navigation";
 import { useDraftEditorStore } from "@store";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 /** §7.9 — user picks a grounded, policy-filtered selector; executor never picks silently. */
 export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"SelectorCandidates">) {
-  const { colors, typography } = useAppTheme();
+  const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   const { draftId, stepId } = route.params;
   const [candidates, setCandidates] = useState<SelectorCandidate[]>([]);
@@ -75,7 +84,7 @@ export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"Sel
           >
             <Card tone={selected === c.index ? "callout" : "surface"}>
               <View style={styles.headline}>
-                <View style={{ flex: 1, minWidth: 0 }}>
+                <View style={styles.copy}>
                   <View style={styles.pillRow}>
                     <StatusPill label={c.strategy} tone="cyan" />
                     <StatusPill
@@ -85,12 +94,10 @@ export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"Sel
                     {c.isPrimary && <StatusPill label="Current primary" tone="violet" />}
                     {c.strategy === "coordinates" && <StatusPill label="Review-only" tone="red" />}
                   </View>
-                  <Text style={styles.selectorValue}>{c.strategy} = {c.value}</Text>
+                  <CodeChip style={styles.selectorValue}>{`${c.strategy} = ${c.value}`}</CodeChip>
                   <Text style={typography.bodyMuted}>{c.reason}</Text>
                 </View>
-                <View style={[styles.radio, { borderColor: selected === c.index ? colors.lime : colors.borderStrong }]}>
-                  {selected === c.index && <View style={styles.radioDot} />}
-                </View>
+                <RadioIndicator selected={selected === c.index} />
               </View>
             </Card>
           </TouchableOpacity>
@@ -98,7 +105,7 @@ export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"Sel
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Cancel" onPress={() => navigation.goBack()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Use this selector"
           disabled={selected == null || candidates[selected]?.isPrimary}
@@ -109,23 +116,9 @@ export function SelectorCandidatesScreen({ navigation, route }: ScreenProps<"Sel
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
-  headline: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm },
-  selectorValue: {
-    fontFamily: "monospace",
-    fontSize: 12,
-    color: colors.cyan,
-    backgroundColor: colors.infoSurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-    alignSelf: "flex-start",
-    marginBottom: spacing.xs,
-  },
-  radio: {
-    width: 22, height: 22, borderRadius: 11,
-    borderWidth: 2, alignItems: "center", justifyContent: "center",
-  },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: colors.lime },
-});
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  headline: layout.row,
+  copy: { flex: 1, minWidth: 0 },
+  pillRow: { ...layout.rowWrap, marginBottom: spacing.sm },
+  selectorValue: { marginBottom: spacing.xs },
+}));

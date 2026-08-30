@@ -13,7 +13,6 @@ import {
   type CaptureEvent,
   type Mission,
   type MissionEvent,
-  type ReplayResult,
   type TestDraft,
   type UIState,
   toMaestroYaml,
@@ -570,8 +569,6 @@ export function createMockPocketQaNative(): PocketQaNativeApi {
 
     addListener(cb) { listeners.add(cb); return () => listeners.delete(cb); },
   };
-
-  function _yamlPreview(t: ApprovedTest): string { return toMaestroYaml(t); }
 }
 
 /** Recognise hard-stop categories from an operator's typed label (§10.4). */

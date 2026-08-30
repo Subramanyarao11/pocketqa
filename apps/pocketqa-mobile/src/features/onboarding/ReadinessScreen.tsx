@@ -3,7 +3,7 @@ import { View } from "react-native";
 import type { ScreenProps } from "@navigation";
 import {
   AppScreen, BottomActionBar, Card, GhostButton, InlineNotice, PrimaryButton,
-  ReadinessRow, TopBar,
+  ReadinessRow, Spacer, TopBar,
 } from "@components";
 import { PocketQaNative } from "@native";
 import { useReadinessStore } from "@store";
@@ -73,7 +73,7 @@ export function ReadinessScreen({ navigation }: ScreenProps<"Readiness">) {
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Recheck" onPress={() => refresh()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Continue"
           disabled={!primaryReady}

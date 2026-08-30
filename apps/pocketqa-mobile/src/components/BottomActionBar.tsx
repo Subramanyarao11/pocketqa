@@ -1,7 +1,7 @@
-import { PropsWithChildren } from "react";
+import { type PropsWithChildren } from "react";
 import { StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { spacing, useThemeStyles, type AppTheme } from "@theme";
+import { layout, makeStyles, spacing, useThemeStyles, type AppTheme } from "@theme";
 
 /** Sticky primary/secondary action pair, respects safe area (§8). */
 export function BottomActionBar({ children }: PropsWithChildren) {
@@ -13,23 +13,21 @@ export function BottomActionBar({ children }: PropsWithChildren) {
   );
 }
 
-const createStyles = ({ colors, isDark }: AppTheme) => ({
+const createStyles = makeStyles(({ colors, elevation }: AppTheme) => ({
   wrap: {
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: isDark ? 0 : 0.06,
-    shadowRadius: 10,
-    elevation: isDark ? 0 : 4,
+    ...elevation.barTop,
   },
   row: {
+    ...layout.row,
+    // Three labelled actions overflow a phone width (Evidence does this). Wrap
+    // to a second line rather than letting the last one run off the edge.
+    flexWrap: "wrap",
     minHeight: 72,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
-    flexDirection: "row",
     gap: spacing.sm,
-    alignItems: "center",
   },
-});
+}));

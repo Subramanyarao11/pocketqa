@@ -1,5 +1,14 @@
 import { Text, View } from "react-native";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme, type ThemeColors } from "@theme";
+import {
+  controlSize,
+  radius,
+  spacing,
+  useAppTheme,
+  makeStyles,
+  useThemeStyles,
+  type AppTheme,
+  type ThemeColors,
+} from "@theme";
 
 export interface ProgressStage {
   id: string;
@@ -38,16 +47,21 @@ function dotStyle(colors: ThemeColors, state: ProgressStage["state"]) {
   }
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
   list: {
     padding: spacing.lg,
-    borderRadius: 14,
+    borderRadius: radius.card,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.surface,
   },
-  row: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, minHeight: 44 },
-  rail: { width: 16, alignItems: "center", alignSelf: "stretch" },
-  dot: { width: 10, height: 10, borderRadius: 5, marginTop: 6, zIndex: 1 },
-  connector: { width: 1, flex: 1, backgroundColor: colors.border, marginVertical: 3 },
-});
+  row: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+    minHeight: controlSize.minTouch,
+  },
+  rail: { width: spacing.lg, alignItems: "center", alignSelf: "stretch" },
+  dot: { width: 10, height: 10, borderRadius: radius.pill, marginTop: spacing.sm, zIndex: 1 },
+  connector: { width: 1, flex: 1, backgroundColor: colors.border, marginVertical: spacing.xxs },
+}));

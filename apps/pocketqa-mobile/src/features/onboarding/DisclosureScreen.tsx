@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Text, TouchableOpacity, View } from "react-native";
-import { Check } from "lucide-react-native";
+import { Text } from "react-native";
 import type { ScreenProps } from "@navigation";
-import { AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, TopBar } from "@components";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import {
+  AppScreen, BottomActionBar, Card, Checkbox, GhostButton, PrimaryButton, Spacer, TopBar,
+} from "@components";
+import { useAppTheme } from "@theme";
 import { PocketQaNative } from "@native";
 
 export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
-  const { colors, typography } = useAppTheme();
-  const styles = useThemeStyles(createStyles);
+  const { typography } = useAppTheme();
   const [consent, setConsent] = useState(false);
 
   return (
@@ -37,21 +37,12 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
           </Text>
         </Card>
 
-        <TouchableOpacity
-          style={styles.consentRow}
-          onPress={() => setConsent((c) => !c)}
-          accessibilityRole="checkbox"
-          accessibilityState={{ checked: consent }}
-          accessibilityLabel="I understand what PocketQA can inspect and where it can act."
+        <Checkbox
+          checked={consent}
+          onChange={setConsent}
+          label="I understand what PocketQA can inspect and where it can act."
           accessibilityHint="Toggles capture disclosure consent."
-        >
-          <View style={[styles.box, { borderColor: consent ? colors.lime : colors.borderStrong, backgroundColor: consent ? colors.lime : "transparent" }]}>
-            {consent && <Check color={colors.onAccent} size={16} strokeWidth={3} />}
-          </View>
-          <Text style={[typography.body, { flex: 1 }]}>
-            I understand what PocketQA can inspect and where it can act.
-          </Text>
-        </TouchableOpacity>
+        />
 
         <Text style={typography.bodyMuted}>
           A consent record (version + UTC timestamp) is stored locally for audit.
@@ -59,7 +50,7 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Read privacy" onPress={() => navigation.navigate("Settings")} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="I agree"
           disabled={!consent}
@@ -72,17 +63,3 @@ export function DisclosureScreen({ navigation }: ScreenProps<"Disclosure">) {
     </>
   );
 }
-
-const createStyles = (_theme: AppTheme) => ({
-  consentRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.md,
-  },
-  box: {
-    width: 26, height: 26,
-    borderRadius: 7, borderWidth: 2,
-    alignItems: "center", justifyContent: "center",
-  },
-});

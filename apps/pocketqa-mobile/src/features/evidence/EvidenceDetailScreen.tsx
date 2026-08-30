@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
-import { AppScreen, Card, InlineNotice, StatusPill, TopBar } from "@components";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { AppScreen, Card, EvidenceThumbnail, InlineNotice, StatusPill, TopBar } from "@components";
+import { type UIState } from "@domain";
 import { PocketQaNative } from "@native";
-import type { UIState } from "@domain";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
+import { type ScreenProps } from "@navigation";
 
 /** §7.11 — inspect the redacted UI tree, OCR, and bounds for a state referenced by evidence. */
 export function EvidenceDetailScreen({ navigation, route }: ScreenProps<"EvidenceDetail">) {
@@ -49,17 +49,26 @@ export function EvidenceDetailScreen({ navigation, route }: ScreenProps<"Evidenc
           <>
             <Card>
               <Text style={typography.eyebrow}>State summary</Text>
-              <View style={styles.pillRow}>
-                <StatusPill label={state.screenName} tone="cyan" />
-                <StatusPill label={`${state.nodes.length} nodes`} tone="dim" />
-                <StatusPill label={`${state.ocrText.length} OCR lines`} tone="dim" />
-                {sensitiveCount > 0 && (
-                  <StatusPill label={`${sensitiveCount} redacted`} tone="amber" />
-                )}
+              <View style={styles.summary}>
+                <EvidenceThumbnail
+                  screenName={state.screenName}
+                  uri={state.screenshotDataUri}
+                  redactionCount={sensitiveCount}
+                />
+                <View style={styles.summaryCopy}>
+                  <View style={styles.pillRow}>
+                    <StatusPill label={state.screenName} tone="cyan" />
+                    <StatusPill label={`${state.nodes.length} nodes`} tone="dim" />
+                    <StatusPill label={`${state.ocrText.length} OCR lines`} tone="dim" />
+                    {sensitiveCount > 0 && (
+                      <StatusPill label={`${sensitiveCount} redacted`} tone="amber" />
+                    )}
+                  </View>
+                  <Text style={typography.metadata}>
+                    State ID {state.id}{" · "}captured {new Date(state.capturedAt).toLocaleTimeString()}
+                  </Text>
+                </View>
               </View>
-              <Text style={typography.metadata}>
-                State ID {state.id}{" · "}captured {new Date(state.capturedAt).toLocaleTimeString()}
-              </Text>
             </Card>
 
             <Text style={typography.eyebrow}>Accessibility tree</Text>
@@ -103,7 +112,13 @@ export function EvidenceDetailScreen({ navigation, route }: ScreenProps<"Evidenc
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
-  pillRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.xs },
-  ocrLine: { paddingVertical: 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
-});
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
+  summary: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
+  summaryCopy: { flex: 1, gap: spacing.xs },
+  pillRow: { ...layout.rowWrap, marginBottom: spacing.xs },
+  ocrLine: {
+    paddingVertical: spacing.xxs,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+}));

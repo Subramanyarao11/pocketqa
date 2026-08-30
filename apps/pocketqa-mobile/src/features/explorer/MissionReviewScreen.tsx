@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
+import { layout, makeStyles, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar,
+  AppScreen,
+  BottomActionBar,
+  Card,
+  GhostButton,
+  PrimaryButton,
+  Spacer,
+  StatusPill,
+  TopBar,
 } from "@components";
 import { PocketQaNative, type MissionSummary } from "@native";
-import { useAppTheme } from "@theme";
+import { type ScreenProps } from "@navigation";
 
 export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionReview">) {
   const { typography } = useAppTheme();
+  const styles = useThemeStyles(createStyles);
   const [summary, setSummary] = useState<MissionSummary | null>(null);
 
   useEffect(() => {
@@ -37,7 +45,7 @@ export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionR
         </Card>
         <Card>
           <Text style={typography.eyebrow}>Bounds</Text>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+          <View style={styles.boundsRow}>
             <StatusPill label={`Actions ≤ ${m.maxActions}`} tone="cyan" />
             <StatusPill label={`Time ≤ ${m.maxDurationSeconds}s`} tone="cyan" />
             <StatusPill label={`Allowlist: ${m.packageAllowlist.join(",")}`} tone="lime" />
@@ -59,7 +67,7 @@ export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionR
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Cancel" onPress={() => navigation.goBack()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Approve mission"
           onPress={async () => {
@@ -71,3 +79,7 @@ export function MissionReviewScreen({ navigation, route }: ScreenProps<"MissionR
     </>
   );
 }
+
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  boundsRow: layout.rowWrap,
+}));

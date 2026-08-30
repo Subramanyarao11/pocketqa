@@ -1,13 +1,29 @@
 import { useState } from "react";
-import { Text, TextInput, View } from "react-native";
+import { Text, View } from "react-native";
 import { ShieldCheck } from "lucide-react-native";
-import type { ScreenProps } from "@navigation";
 import {
-  AppScreen, BottomActionBar, Card, GhostButton, PrimaryButton, StatusPill, TopBar,
+  iconSize,
+  layout,
+  makeStyles,
+  spacing,
+  useAppTheme,
+  useThemeStyles,
+  type AppTheme,
+} from "@theme";
+import {
+  AppScreen,
+  BottomActionBar,
+  Card,
+  GhostButton,
+  PrimaryButton,
+  Spacer,
+  StatusPill,
+  TextField,
+  TopBar,
 } from "@components";
-import { PocketQaNative } from "@native";
-import { radius, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import { ALLOWLISTED_PACKAGES } from "@domain";
+import { PocketQaNative } from "@native";
+import { type ScreenProps } from "@navigation";
 
 export function AgentLabScreen({ navigation }: ScreenProps<"AgentLab">) {
   const { colors, typography } = useAppTheme();
@@ -30,12 +46,12 @@ export function AgentLabScreen({ navigation }: ScreenProps<"AgentLab">) {
 
         <Card>
           <Text style={typography.eyebrow}>Mission goal</Text>
-          <TextInput
-            style={styles.textarea}
+          <TextField
             value={goal}
             onChangeText={setGoal}
-            multiline
-            placeholderTextColor={colors.textDim}
+            variant="multiline"
+            rows={3}
+            accessibilityLabel="Mission goal"
           />
         </Card>
 
@@ -65,10 +81,10 @@ export function AgentLabScreen({ navigation }: ScreenProps<"AgentLab">) {
       </AppScreen>
       <BottomActionBar>
         <GhostButton label="Cancel" onPress={() => navigation.goBack()} />
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Review mission"
-          icon={<ShieldCheck color={colors.onAccent} size={17} />}
+          icon={<ShieldCheck color={colors.onAccent} size={iconSize.md} />}
           onPress={async () => {
             const mission = await PocketQaNative.createMission({
               goal,
@@ -90,15 +106,8 @@ function StepperButton({ label, onPress }: { label: string; onPress: () => void 
   );
 }
 
-const createStyles = ({ colors }: AppTheme) => ({
-  textarea: {
-    minHeight: 84,
-    padding: spacing.md,
-    borderRadius: radius.input,
-    borderWidth: 1, borderColor: colors.borderStrong,
-    color: colors.text, textAlignVertical: "top", backgroundColor: colors.surface,
-  },
-  rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: spacing.xs },
-  stepper: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  pills: { flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginTop: spacing.sm },
-});
+const createStyles = makeStyles((_theme: AppTheme) => ({
+  rowBetween: { ...layout.rowBetween, paddingVertical: spacing.xs },
+  stepper: { ...layout.row, gap: spacing.sm },
+  pills: { ...layout.rowWrap, marginTop: spacing.sm },
+}));

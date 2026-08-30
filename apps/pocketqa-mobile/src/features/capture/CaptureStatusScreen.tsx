@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { AppState, Text, View } from "react-native";
-import type { ScreenProps } from "@navigation";
+import { layout, makeStyles, spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 import {
-  AppScreen, BottomActionBar, Card, ConfirmSheet, DangerButton, GhostButton,
-  InlineNotice, PrimaryButton, StatusPill, TopBar,
+  AppScreen,
+  BottomActionBar,
+  Card,
+  ConfirmSheet,
+  DangerButton,
+  GhostButton,
+  InlineNotice,
+  PrimaryButton,
+  Spacer,
+  StatusPill,
+  TopBar,
 } from "@components";
 import { PocketQaNative } from "@native";
+import { type ScreenProps } from "@navigation";
 import { useActiveOperationStore } from "@store";
-import { spacing, useAppTheme, useThemeStyles, type AppTheme } from "@theme";
 
 const CANONICAL_STEPS: Array<{ action: "tap" | "typeText"; label: string; input?: string }> = [
   { action: "tap", label: "Open sneakers product" },
@@ -33,7 +42,7 @@ const HARD_STOP_DEMO: Array<{ action: "tap" | "typeText"; label: string }> = [
  * be demonstrated when the target app is not available.
  */
 export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureStatus">) {
-  const { colors, typography } = useAppTheme();
+  const { typography } = useAppTheme();
   const styles = useThemeStyles(createStyles);
   const activeProgress = useActiveOperationStore((s) =>
     s.active?.kind === "CAPTURE" ? s.active.progress : undefined
@@ -98,7 +107,7 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
             <Text style={typography.bodyMuted}>Last: {activeProgress.lastActionLabel}</Text>
           )}
           {activeProgress?.partialEvidenceWarning && (
-            <Text style={[typography.bodyMuted, { color: colors.amber }]}>
+            <Text style={[typography.bodyMuted, styles.warning]}>
               {activeProgress.partialEvidenceWarning}
             </Text>
           )}
@@ -112,7 +121,7 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
           {CANONICAL_STEPS.map((s, i) => (
             <View key={i} style={styles.row}>
               <StatusPill label={i < stepCount ? "✓" : String(i + 1)} tone={i < stepCount ? "lime" : "dim"} />
-              <Text style={[typography.body, { flex: 1 }]}>{s.label}</Text>
+              <Text style={[typography.body, styles.rowLabel]}>{s.label}</Text>
               <GhostButton
                 label={i < stepCount ? "Done" : "Capture"}
                 onPress={() => PocketQaNative.simulateCaptureEvent(route.params.sessionId, s)}
@@ -124,11 +133,11 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
         <Card tone="warn">
           <Text style={typography.eyebrow}>Policy demo</Text>
           <Text style={typography.bodyMuted}>Tapping any of these triggers a hard stop.</Text>
-          <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+          <View style={styles.demoList}>
             {HARD_STOP_DEMO.map((s, i) => (
               <View key={i} style={styles.row}>
                 <StatusPill label="Blocked" tone="red" />
-                <Text style={[typography.body, { flex: 1 }]}>{s.label}</Text>
+                <Text style={[typography.body, styles.rowLabel]}>{s.label}</Text>
                 <GhostButton
                   label="Try"
                   onPress={() => PocketQaNative.simulateCaptureEvent(route.params.sessionId, s)}
@@ -149,7 +158,7 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
         </Card>
       </AppScreen>
       <BottomActionBar>
-        <View style={{ flex: 1 }} />
+        <Spacer />
         <PrimaryButton
           label="Finish"
           disabled={stepCount < 2}
@@ -177,7 +186,10 @@ export function CaptureStatusScreen({ navigation, route }: ScreenProps<"CaptureS
   );
 }
 
-const createStyles = (_theme: AppTheme) => ({
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.xs },
-  controlsRow: { flexDirection: "row", gap: spacing.sm },
-});
+const createStyles = makeStyles(({ colors }: AppTheme) => ({
+  row: { ...layout.row, paddingVertical: spacing.xs },
+  rowLabel: { flex: 1 },
+  warning: { color: colors.amber },
+  demoList: { marginTop: spacing.sm, gap: spacing.xs },
+  controlsRow: { ...layout.row, gap: spacing.sm },
+}));
