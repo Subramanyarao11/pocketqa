@@ -30,6 +30,7 @@ export function Chip({ label, selected, onPress, role = "radio", accessibilityLa
   return (
     <TouchableOpacity
       onPress={onPress}
+      hitSlop={(controlSize.minTouch - controlSize.sm) / 2}
       accessibilityRole={role}
       accessibilityState={role === "radio" ? { selected } : { checked: selected }}
       accessibilityLabel={accessibilityLabel ?? label}

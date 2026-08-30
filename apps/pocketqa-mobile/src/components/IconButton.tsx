@@ -12,7 +12,7 @@ export interface IconButtonProps {
 
 /**
  * Square bordered control for a single icon. Renders at 40dp but claims the
- * full 44dp target through `hitSlop`, so rows of them stay compact.
+ * full `minTouch` target through `hitSlop`, so rows of them stay compact.
  */
 export function IconButton({ icon, onPress, accessibilityLabel, disabled, testID }: IconButtonProps) {
   const styles = useThemeStyles(createStyles);

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Animated, TouchableOpacity } from "react-native";
 import {
+  controlSize,
   motion,
   radius,
   useAppTheme,
@@ -15,6 +16,8 @@ const TRACK_HEIGHT = 26;
 const THUMB_SIZE = 22;
 const THUMB_INSET = 2;
 const THUMB_TRAVEL = TRACK_WIDTH - THUMB_SIZE - THUMB_INSET * 2;
+/** The track is deliberately smaller than the accessibility floor. */
+const HIT_SLOP = (controlSize.minTouch - TRACK_HEIGHT) / 2;
 
 /** Accessible switch. The thumb slides; the track colour crossfades with it. */
 export function Toggle({
@@ -50,7 +53,7 @@ export function Toggle({
       accessibilityLabel={accessibilityLabel}
       onPress={() => !disabled && onChange(!value)}
       activeOpacity={0.72}
-      hitSlop={8}
+      hitSlop={HIT_SLOP}
     >
       <Animated.View
         style={[

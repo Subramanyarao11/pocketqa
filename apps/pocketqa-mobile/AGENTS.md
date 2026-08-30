@@ -43,7 +43,7 @@ Everything visual comes from `@theme`. If a value you need isn't there, add it t
 | Corner | `radius.*` | |
 | Text | `typography.*` | Never a bare `fontSize`/`fontWeight` pair |
 | Icon | `iconSize.*` | Lucide `size=` |
-| Height | `controlSize.*` | `minTouch` (44) is the floor for anything pressable |
+| Height | `controlSize.*` | `minTouch` (48) is the floor for anything pressable |
 | Shadow | `elevation.*` from `useAppTheme()` | `accentGlow(color)` for tinted floating controls |
 | Animation | `motion.duration.*`, `motion.easing.*` | |
 | Row/fill | `layout.*` | Spread it: `{ ...layout.rowBetween, paddingVertical: spacing.sm }` |
@@ -76,7 +76,7 @@ doesn't mock it). Any animated component must read `useReducedMotion()` and pass
 
 ## Accessibility
 
-- Every pressable clears 44dp, directly or via `hitSlop`.
+- Every pressable clears 48dp, directly or via `hitSlop`.
 - Icon-only controls require `accessibilityLabel`. So do all `TextField`s.
 - Never signal state with colour alone; pair it with a label or an icon.
 

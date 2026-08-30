@@ -103,9 +103,10 @@ export const spacing = {
 export const radius = {
   xs: 4,
   sm: 6,
-  control: 10,
+  /** Buttons and other interactive chrome. Matches `input` by design. */
+  control: 12,
   input: 12,
-  card: 14,
+  card: 16,
   panel: 18,
   pill: 999,
 } as const;
@@ -125,7 +126,7 @@ export const iconSize = {
  * every pressable must clear (directly or via `hitSlop`).
  */
 export const controlSize = {
-  minTouch: 44,
+  minTouch: 48,
   /** Compact inline control — chips, segmented tabs, icon buttons. */
   sm: 36,
   /** Default control height for buttons and inputs. */
@@ -212,9 +213,9 @@ export function createTypography(colors: ThemeColors): ThemeTypography {
     },
     metadata: {
       color: colors.textDim,
-      fontSize: 12,
+      fontSize: 13,
       fontWeight: "500",
-      lineHeight: 17,
+      lineHeight: 18,
     },
     mono: {
       color: colors.textMuted,
